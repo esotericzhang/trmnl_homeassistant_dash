@@ -28,16 +28,18 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
   for (const [key, entity] of Object.entries(config.data.entities)) {
     states[key] = { entity_id: entity, state: sampleValue(key), attributes: {} }
   }
-  states.hourlyForecast.attributes.forecast = [
-    { datetime: '2026-06-24T08:00:00-07:00', temperature: 61, condition: 'cloudy' },
-    { datetime: '2026-06-24T09:00:00-07:00', temperature: 64, condition: 'partlycloudy' },
-    { datetime: '2026-06-24T10:00:00-07:00', temperature: 67, condition: 'sunny' },
-    { datetime: '2026-06-24T11:00:00-07:00', temperature: 70, condition: 'sunny' },
-    { datetime: '2026-06-24T12:00:00-07:00', temperature: 73, condition: 'sunny' },
-    { datetime: '2026-06-24T13:00:00-07:00', temperature: 75, condition: 'sunny' },
-    { datetime: '2026-06-24T14:00:00-07:00', temperature: 76, condition: 'partlycloudy' },
-    { datetime: '2026-06-24T15:00:00-07:00', temperature: 74, condition: 'cloudy' }
-  ]
+  if (states.hourlyForecast) {
+    states.hourlyForecast.attributes.forecast = [
+      { datetime: '2026-06-24T08:00:00-07:00', temperature: 61, condition: 'cloudy' },
+      { datetime: '2026-06-24T09:00:00-07:00', temperature: 64, condition: 'partlycloudy' },
+      { datetime: '2026-06-24T10:00:00-07:00', temperature: 67, condition: 'sunny' },
+      { datetime: '2026-06-24T11:00:00-07:00', temperature: 70, condition: 'sunny' },
+      { datetime: '2026-06-24T12:00:00-07:00', temperature: 73, condition: 'sunny' },
+      { datetime: '2026-06-24T13:00:00-07:00', temperature: 75, condition: 'sunny' },
+      { datetime: '2026-06-24T14:00:00-07:00', temperature: 76, condition: 'partlycloudy' },
+      { datetime: '2026-06-24T15:00:00-07:00', temperature: 74, condition: 'cloudy' }
+    ]
+  }
   return { values: Object.fromEntries(Object.entries(states).map(([key, state]) => [key, state.state])), states }
 }
 

@@ -108,7 +108,6 @@ export function renderEditorHtml(): string {
     function labelFor(item) {
       if (item.type === 'text') return item.id + ' · text';
       if (item.type === 'metric') return item.id + ' · metric';
-      if (item.type === 'forecast') return item.id + ' · forecast';
       if (item.type === 'forecast') return 'Forecast: ' + (item.source || '');
       return item.id;
     }

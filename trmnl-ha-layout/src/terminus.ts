@@ -162,7 +162,7 @@ export class TerminusClient {
 
   private authorizationHeader(token: string): string {
     if (!token) return ''
-    return token.toLowerCase().startsWith('bearer ') ? token : token
+    return token
   }
 
   private fileName(options: TerminusPushOptions): string {
