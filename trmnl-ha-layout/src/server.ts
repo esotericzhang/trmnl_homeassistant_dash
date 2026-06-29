@@ -1,4 +1,5 @@
 import express from 'express'
+import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
   loadLayoutConfig,
@@ -43,7 +44,10 @@ function isMutationAuthenticated(req: express.Request): boolean {
   }
   const header = req.headers.authorization ?? ''
   const expected = header.startsWith('Bearer ') ? header.slice(7) : ''
-  return expected === token
+  if (typeof expected !== 'string' || typeof token !== 'string' || expected.length !== token.length) {
+    return false
+  }
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(token))
 }
 
 function requireMutationAuth(req: express.Request, res: express.Response): boolean {
