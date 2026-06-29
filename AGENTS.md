@@ -30,7 +30,7 @@ Config precedence (highest first): `process.env` → `/data/options.json` (addon
 
 ## Settings GUI auth
 
-`SETTINGS_TOKEN` env var (or `settings.settingsToken`) gates all mutating endpoints (`PUT /api/settings`, `POST /api/terminus/*`, `DELETE /api/terminus/tokens`). If unset, mutations are allowed with a logged warning (dev fallback). `ALLOW_NO_AUTH=1` silences the warning explicitly. The `/editor` page accepts `?token=` and stores it in `sessionStorage`; the client attaches `Authorization: Bearer <token>` to all fetches. Do not regress: `GET /api/settings` must never return full `haToken`, `terminus.login`, `terminus.password`, or raw JWTs.
+`SETTINGS_TOKEN` env var (or `settings.settingsToken`) gates all mutating endpoints (`PUT /api/config`, `POST /api/refresh`, `PUT /api/settings`, `POST /api/terminus/*`, `DELETE /api/terminus/tokens`). If unset, mutations are allowed with a logged warning (dev fallback). `ALLOW_NO_AUTH=1` silences the warning explicitly. The `/editor` page accepts `?token=` and stores it in `sessionStorage`; the client attaches `Authorization: Bearer <token>` to all fetches. Do not regress: `GET /api/settings` must never return full `haToken`, `terminus.login`, `terminus.password`, or raw JWTs.
 
 ## Out of scope for task #1 (handled by later tasks)
 
