@@ -115,7 +115,7 @@ app.put('/api/settings', (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-app.post('/api/terminus/login', async (req, res) => {
+app.post('/api/terminus/login', async (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try {
     const { apiUrl, login, password } = req.body as { apiUrl?: string; login?: string; password?: string }
@@ -139,7 +139,12 @@ app.post('/api/terminus/login', async (req, res) => {
     void saved
     res.json({ success: true, obtained_at: obtainedAt })
   } catch (error) {
-    res.status(401).json({ success: false, error: (error as Error).message })
+    const message = (error as Error).message
+    if (message.includes('login failed')) {
+      res.status(401).json({ success: false, error: message })
+    } else {
+      next(error)
+    }
   }
 })
 
