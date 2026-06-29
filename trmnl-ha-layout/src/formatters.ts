@@ -34,9 +34,14 @@ export function formatMinutes(value: unknown): string {
 }
 
 export function interpolate(template: string, values: Record<string, unknown>): string {
-  return template.replace(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g, (_match, key: string, filter?: string) => {
-    return escapeXml(formatValue(values[key], filter))
-  })
+  let result = ''
+  let lastIndex = 0
+  for (const match of template.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g)) {
+    result += escapeXml(template.slice(lastIndex, match.index))
+    result += escapeXml(formatValue(values[match[1]], match[2]))
+    lastIndex = match.index + match[0].length
+  }
+  return result + escapeXml(template.slice(lastIndex))
 }
 
 export function escapeXml(value: string): string {

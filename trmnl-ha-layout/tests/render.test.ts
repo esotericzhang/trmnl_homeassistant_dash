@@ -111,4 +111,29 @@ describe('renderer', () => {
     expect(svg).toContain('clip-path="url(#clip-forecast-test)"')
     expect(svg).not.toContain('translate(0,68)')
   })
+
+  it('escapes static text item content in SVG output', () => {
+    const config: LayoutConfig = {
+      frame: {
+        width: 800,
+        height: 480,
+        background: '#fff',
+        foreground: '#111',
+        fontFamily: 'Arial'
+      },
+      data: { entities: {} },
+      items: [{
+        id: 'unsafe-text',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 40,
+        text: '</text><script>alert(1)</script>{{ value }}'
+      }]
+    }
+    const svg = renderSvg(config, { values: { value: '<ok>' }, states: {} })
+    expect(svg).toContain('&lt;/text&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;ok&gt;')
+    expect(svg).not.toContain('</text><script>')
+  })
 })

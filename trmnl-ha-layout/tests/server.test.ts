@@ -48,6 +48,14 @@ describe('server routes', () => {
     expect(editorHtml).toContain('Home Assistant URL')
     expect(editorHtml).toContain('id="home_assistant_url"')
   })
+
+  it('serves preview refresh with stored bearer token', async () => {
+    const preview = await fetch(`${baseUrl}/preview`)
+    const previewHtml = await preview.text()
+    expect(previewHtml).toContain("sessionStorage.getItem('trmnl_settings_token')")
+    expect(previewHtml).toContain("Authorization:'Bearer '+token")
+    expect(previewHtml).toContain("fetch('/api/refresh',{method:'POST',headers:authHeaders()})")
+  })
 })
 
 describe('settings + terminus auth routes', () => {
