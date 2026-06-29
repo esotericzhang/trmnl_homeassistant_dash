@@ -1,4 +1,5 @@
-import { getAddonOptions, stringOption } from './config.js'
+import { getAddonOptions, loadSettingsSafe, stringOption } from './config.js'
+import type { TerminusMode } from './config.js'
 
 export interface TerminusPushOptions {
   apiUrl?: string
@@ -96,6 +97,37 @@ export class TerminusClient {
     return response.json() as Promise<unknown>
   }
 
+  async login(apiUrl: string, login: string, password: string): Promise<{ accessToken: string; refreshToken: string | undefined }> {
+    const response = await this.fetcher(new URL('/login', apiUrl).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login, password })
+    })
+    if (!response.ok) throw new Error(`Terminus login failed: ${response.status} ${await response.text()}`)
+    const body = await response.json() as Record<string, unknown>
+    const accessToken = tokenValue(body, ['access_token', 'token', 'jwt'])
+    if (!accessToken) throw new Error('Terminus login returned no access token')
+    const refreshToken = tokenValue(body, ['refresh_token'])
+    return { accessToken, refreshToken }
+  }
+
+  async refresh(options: TerminusPushOptions): Promise<{ accessToken: string; refreshToken: string | undefined }> {
+    if (!options.apiUrl || !options.accessToken || !options.refreshToken) {
+      throw new Error('Terminus refresh requires apiUrl, accessToken, and refreshToken')
+    }
+    const response = await this.fetcher(new URL('/api/jwt', options.apiUrl).toString(), {
+      method: 'POST',
+      headers: { Authorization: this.authorizationHeader(options.accessToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: options.refreshToken })
+    })
+    if (!response.ok) throw new Error(`Terminus refresh failed: ${response.status} ${await response.text()}`)
+    const body = await response.json() as Record<string, unknown>
+    const accessToken = tokenValue(body, ['access_token', 'token', 'jwt'])
+    if (!accessToken) throw new Error('Terminus refresh returned no access token')
+    const refreshToken = tokenValue(body, ['refresh_token']) ?? options.refreshToken
+    return { accessToken, refreshToken }
+  }
+
   private async resolveAccessToken(options: TerminusPushOptions): Promise<string | undefined> {
     if (options.accessToken && options.refreshToken) {
       const refreshed = await this.refreshAccessToken(options)
@@ -180,19 +212,21 @@ function tokenValue(body: Record<string, unknown>, keys: string[]): string | und
 
 export function terminusOptionsFromEnv(): TerminusPushOptions {
   const options = getAddonOptions()
+  const settings = loadSettingsSafe()
+  const terminus = settings.terminus
   return {
-    apiUrl: process.env.TERMINUS_API_URL ?? stringOption(options, 'terminus_api_url'),
-    accessToken: process.env.TERMINUS_ACCESS_TOKEN ?? stringOption(options, 'terminus_access_token'),
-    refreshToken: process.env.TERMINUS_REFRESH_TOKEN ?? stringOption(options, 'terminus_refresh_token'),
+    apiUrl: process.env.TERMINUS_API_URL ?? stringOption(options, 'terminus_api_url') ?? (terminus.apiUrl || undefined),
+    accessToken: process.env.TERMINUS_ACCESS_TOKEN ?? stringOption(options, 'terminus_access_token') ?? terminus.accessToken,
+    refreshToken: process.env.TERMINUS_REFRESH_TOKEN ?? stringOption(options, 'terminus_refresh_token') ?? terminus.refreshToken,
     login: process.env.TERMINUS_LOGIN ?? stringOption(options, 'terminus_login'),
     password: process.env.TERMINUS_PASSWORD ?? stringOption(options, 'terminus_password'),
-    mode: (process.env.TERMINUS_MODE as TerminusPushOptions['mode']) ?? (stringOption(options, 'terminus_mode') as TerminusPushOptions['mode']) ?? 'byos-uri',
-    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? stringOption(options, 'public_base_url'),
-    webhookUrl: process.env.TERMINUS_WEBHOOK_URL ?? stringOption(options, 'terminus_webhook_url'),
-    modelId: process.env.TERMINUS_MODEL_ID ?? stringOption(options, 'terminus_model_id'),
-    screenName: process.env.TERMINUS_SCREEN_NAME ?? stringOption(options, 'terminus_screen_name'),
-    screenLabel: process.env.TERMINUS_SCREEN_LABEL ?? stringOption(options, 'terminus_screen_label'),
-    playlistId: process.env.TERMINUS_PLAYLIST_ID ?? stringOption(options, 'terminus_playlist_id'),
-    screenId: process.env.TERMINUS_SCREEN_ID ?? stringOption(options, 'terminus_screen_id')
+    mode: (process.env.TERMINUS_MODE as TerminusMode | undefined) ?? (stringOption(options, 'terminus_mode') as TerminusMode | undefined) ?? terminus.mode ?? 'byos-uri',
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? stringOption(options, 'public_base_url') ?? (settings.publicBaseUrl || undefined),
+    webhookUrl: process.env.TERMINUS_WEBHOOK_URL ?? stringOption(options, 'terminus_webhook_url') ?? terminus.webhookUrl,
+    modelId: process.env.TERMINUS_MODEL_ID ?? stringOption(options, 'terminus_model_id') ?? terminus.modelId,
+    screenName: process.env.TERMINUS_SCREEN_NAME ?? stringOption(options, 'terminus_screen_name') ?? terminus.screenName,
+    screenLabel: process.env.TERMINUS_SCREEN_LABEL ?? stringOption(options, 'terminus_screen_label') ?? terminus.screenLabel,
+    playlistId: process.env.TERMINUS_PLAYLIST_ID ?? stringOption(options, 'terminus_playlist_id') ?? terminus.playlistId,
+    screenId: process.env.TERMINUS_SCREEN_ID ?? stringOption(options, 'terminus_screen_id') ?? terminus.screenId
   }
 }

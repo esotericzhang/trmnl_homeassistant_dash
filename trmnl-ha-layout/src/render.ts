@@ -26,7 +26,7 @@ export async function renderPng(config: LayoutConfig, svg: string): Promise<Buff
     .toBuffer()
 }
 
-export function renderEditorHtml(): string {
+export function renderEditorHtml(bootstrapToken = ''): string {
   return `<!doctype html>
 <html>
 <head>
@@ -49,13 +49,26 @@ export function renderEditorHtml(): string {
     aside{background:white;border:1px solid #ddd;border-radius:8px;padding:14px;min-width:300px}label{display:block;margin:8px 0 3px;font-weight:600}
     input,select,textarea{width:100%;padding:6px;border:1px solid #bbb;border-radius:4px}textarea{min-height:64px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .actions{display:flex;gap:8px;flex-wrap:wrap}pre{white-space:pre-wrap;background:#f7f7f7;padding:8px;border-radius:4px;max-height:120px;overflow:auto}
+    details.settings{margin-top:12px;border:1px solid #ddd;border-radius:8px;background:#fafafa}details.settings>summary{cursor:pointer;padding:10px 14px;font-weight:700;border-radius:8px}details.settings[open]>summary{border-bottom:1px solid #ddd}
+    .settings-body{padding:12px 14px}.section-title{margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#666}.section-title:first-child{margin-top:0}
+    .hint{color:#777;font-size:12px;margin-top:2px}
+    .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}.pill.ok{background:#e6f4ea;color:#1a7f37}.pill.warn{background:#fff4e0;color:#b25a00}.pill.bad{background:#fce8e6;color:#c5221f}
+    .auth-block{margin-top:8px;padding:10px;border:1px dashed #ccc;border-radius:6px;background:white}
+    .auth-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}.auth-options .col{border:1px solid #eee;border-radius:6px;padding:8px}
+    button.primary{background:#0b69ff;color:white;border:0;padding:6px 12px;border-radius:4px}button.secondary{background:#eee;border:0;padding:6px 12px;border-radius:4px}button.danger{background:#c5221f;color:white;border:0;padding:6px 12px;border-radius:4px}
+    .hidden{display:none}
+    .token-row{display:flex;gap:6px;align-items:center}.token-row input{flex:1}
   </style>
 </head>
 <body>
   <header><strong>TRMNL Layout Editor</strong><button id="reload">Reload</button><button id="reset">Reset local changes</button><button id="save">Save</button><a style="color:white" href="/preview" target="_blank">Preview</a><a style="color:white" href="/screen.png?sample=1" target="_blank">PNG</a></header>
   <main>
     <section class="stage-wrap"><p class="stage-label">Seeed Studio TRMNL OG frame, 800×480</p><div id="stage"><img id="preview-frame" src="/screen.svg?sample=1" alt="Rendered sample preview"><div id="overlay"></div></div></section>
-    <aside><h2>Selected item</h2><div id="empty">Select an item to edit it.</div><form id="form" hidden></form><h3>Status</h3><pre id="status">Loading...</pre></aside>
+    <aside>
+      <h2>Selected item</h2><div id="empty">Select an item to edit it.</div><form id="form" hidden></form>
+      <details class="settings"><summary>Connection Settings</summary><div class="settings-body" id="settings-body"><p class="hint">Loading settings…</p></div></details>
+      <h3>Status</h3><pre id="status">Loading...</pre>
+    </aside>
   </main>
   <script>
     const stage = document.getElementById('stage');
@@ -64,7 +77,11 @@ export function renderEditorHtml(): string {
     const form = document.getElementById('form');
     const empty = document.getElementById('empty');
     const statusEl = document.getElementById('status');
+    const settingsBody = document.getElementById('settings-body');
     let config, loadedConfig, selectedId, drag;
+    const settingsToken = sessionStorage.getItem('trmnl_settings_token') || ${JSON.stringify(bootstrapToken)};
+    if (settingsToken) sessionStorage.setItem('trmnl_settings_token', settingsToken);
+    function authHeaders(extra) { const h = Object.assign({}, extra || {}); if (settingsToken) h['Authorization'] = 'Bearer ' + settingsToken; return h; }
     const fields = ['id','type','x','y','width','height','fontSize','weight','align','text','label','value','source','maxItems','rowHeight','timeX','tempX','precipX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','conditionWeight','rowDivider','dividerInset','rowPaddingY'];
     const numericFields = new Set(['x','y','width','height','fontSize','weight','maxItems','rowHeight','timeX','tempX','precipX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','conditionWeight','dividerInset','rowPaddingY']);
     function refreshPreview() {
@@ -176,7 +193,7 @@ export function renderEditorHtml(): string {
     document.getElementById('save').onclick = async () => {
       try {
         status('Saving layout...');
-        const res = await fetch('/api/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config) });
+        const res = await fetch('/api/config', { method:'PUT', headers: authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(config) });
         if (!res.ok) throw new Error(await res.text());
         config = await res.json();
         loadedConfig = clone(config);
@@ -187,10 +204,162 @@ export function renderEditorHtml(): string {
         status('Save failed: ' + error.message);
       }
     };
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings', { headers: authHeaders() });
+        if (!res.ok) { settingsBody.innerHTML = '<p class="hint">Could not load settings (' + res.status + ').</p>'; return; }
+        const settings = await res.json();
+        renderSettings(settings);
+      } catch (e) { settingsBody.innerHTML = '<p class="hint">Could not load settings.</p>'; }
+    }
+    function relativeTime(ts) {
+      if (!ts) return 'never';
+      const diff = Date.now() - ts;
+      if (diff < 0) return 'just now';
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return 'just now';
+      if (min < 60) return min + ' min ago';
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return hr + ' h ago';
+      return Math.floor(hr / 24) + ' d ago';
+    }
+    function expiryState(obtainedAt) {
+      if (!obtainedAt) return null;
+      const ageMin = (Date.now() - obtainedAt) / 60000;
+      if (ageMin >= 30) return 'bad';
+      if (ageMin >= 25) return 'warn';
+      return 'ok';
+    }
+    function renderSettings(settings) {
+      const t = settings.terminus || {};
+      const mode = t.mode || 'byos-uri';
+      const authModes = ['screen-content','byos-uri','byos-base64'];
+      const showAuth = authModes.includes(mode);
+      const showWebhook = mode === 'raw-webhook';
+      const tokenPreview = settings.haToken ? ' (' + settings.haToken + ')' : '';
+      const authed = !!t.accessToken;
+      const state = expiryState(t.obtainedAt);
+      const pillHtml = authed
+        ? '<span class="pill ' + (state === 'bad' ? 'bad' : state === 'warn' ? 'warn' : 'ok') + '">Authenticated</span>'
+          + '<span class="hint">Last refreshed: ' + relativeTime(t.obtainedAt) + (state === 'bad' ? ' · re-authentication required' : state === 'warn' ? ' · expires soon' : '') + '</span>'
+        : '<span class="pill bad">Not authenticated</span>';
+      const authHtml = authed
+        ? '<div class="actions"><button class="secondary" id="refresh-tokens">Refresh now</button><button class="danger" id="clear-tokens">Clear tokens</button></div>'
+        : '<div class="auth-options">'
+          + '<div class="col"><strong>Login with credentials</strong><label>Terminus login (email)</label><input id="terminus_login" type="email" autocomplete="username"><label>Terminus password</label><input id="terminus_password" type="password" autocomplete="current-password"><button class="primary" id="login-btn">Authenticate</button></div>'
+          + '<div class="col"><strong>Paste tokens manually</strong><label>Access token</label><textarea id="terminus_access_token" rows="2"></textarea><label>Refresh token</label><textarea id="terminus_refresh_token" rows="2"></textarea><button class="primary" id="save-tokens">Save tokens</button></div>'
+          + '</div>';
+      settingsBody.innerHTML =
+        '<div class="section-title">Home Assistant</div>'
+        + '<label>Home Assistant URL</label><input id="home_assistant_url" type="url" value="' + escapeHtml(settings.homeAssistantUrl || '') + '">'
+        + '<label>HA long-lived token</label><div class="token-row"><input id="ha_token" type="password" placeholder="' + (settings.haToken || 'set to replace') + '"><span class="hint">' + escapeHtml(tokenPreview) + '</span></div>'
+        + '<label>Public base URL</label><input id="public_base_url" type="url" value="' + escapeHtml(settings.publicBaseUrl || '') + '"><div class="hint">Required for byos-uri mode</div>'
+        + '<label>Refresh interval (seconds)</label><input id="refresh_interval_seconds" type="number" min="0" value="' + (settings.refreshIntervalSeconds ?? 0) + '"><div class="hint">0 = manual only</div>'
+        + '<div class="section-title">Terminus</div>'
+        + '<label>Terminus API URL</label><input id="terminus_api_url" type="url" value="' + escapeHtml(t.apiUrl || '') + '">'
+        + '<label>Mode</label><select id="terminus_mode">' + ['screen-content','byos-uri','byos-base64','raw-webhook'].map(m => '<option value="'+m+'" '+(mode===m?'selected':'')+'>'+m+'</option>').join('') + '</select>'
+        + '<label>Model ID</label><input id="terminus_model_id" type="text" value="' + escapeHtml(t.modelId || '') + '">'
+        + '<div class="row"><div><label>Screen name</label><input id="terminus_screen_name" type="text" value="' + escapeHtml(t.screenName || '') + '"></div>'
+        + '<div><label>Screen label</label><input id="terminus_screen_label" type="text" value="' + escapeHtml(t.screenLabel || '') + '"></div></div>'
+        + '<div class="row"><div><label>Playlist ID</label><input id="terminus_playlist_id" type="text" value="' + escapeHtml(t.playlistId || '') + '"></div>'
+        + '<div><label>Screen ID</label><input id="terminus_screen_id" type="text" value="' + escapeHtml(t.screenId || '') + '"></div></div>'
+        + (showWebhook ? '<label>Webhook URL</label><input id="terminus_webhook_url" type="url" value="' + escapeHtml(t.webhookUrl || '') + '">' : '')
+        + (showAuth ? '<div class="section-title">JWT authentication</div><div class="auth-block">' + pillHtml + authHtml + '</div>' : '')
+        + '<div class="actions" style="margin-top:12px"><button class="primary" id="save-settings">Save settings</button></div>';
+      const modeSelect = document.getElementById('terminus_mode');
+      if (modeSelect) modeSelect.onchange = () => { loadSettings(); };
+      const saveBtn = document.getElementById('save-settings');
+      if (saveBtn) saveBtn.onclick = saveSettingsHandler;
+      const loginBtn = document.getElementById('login-btn');
+      if (loginBtn) loginBtn.onclick = terminusLogin;
+      const saveTokensBtn = document.getElementById('save-tokens');
+      if (saveTokensBtn) saveTokensBtn.onclick = saveTokensHandler;
+      const refreshBtn = document.getElementById('refresh-tokens');
+      if (refreshBtn) refreshBtn.onclick = terminusRefresh;
+      const clearBtn = document.getElementById('clear-tokens');
+      if (clearBtn) clearBtn.onclick = terminusClear;
+    }
+    async function gatherSettings(includeTokens) {
+      const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+      const existing = await (await fetch('/api/settings', { headers: authHeaders() })).json();
+      const t = existing.terminus || {};
+      const accessToken = includeTokens ? (val('terminus_access_token') || undefined) : (t.accessToken || undefined);
+      const refreshToken = includeTokens ? (val('terminus_refresh_token') || undefined) : (t.refreshToken || undefined);
+      return {
+        homeAssistantUrl: val('home_assistant_url'),
+        haToken: val('ha_token'),
+        publicBaseUrl: val('public_base_url'),
+        refreshIntervalSeconds: Number(val('refresh_interval_seconds') || 0),
+        device: existing.device ?? null,
+        terminus: {
+          apiUrl: val('terminus_api_url'),
+          mode: val('terminus_mode') || 'byos-uri',
+          modelId: val('terminus_model_id') || undefined,
+          screenName: val('terminus_screen_name') || undefined,
+          screenLabel: val('terminus_screen_label') || undefined,
+          playlistId: val('terminus_playlist_id') || undefined,
+          screenId: val('terminus_screen_id') || undefined,
+          webhookUrl: val('terminus_webhook_url') || undefined,
+          accessToken,
+          refreshToken,
+          obtainedAt: t.obtainedAt
+        }
+      };
+    }
+    async function saveSettingsHandler() {
+      try {
+        const body = await gatherSettings(true);
+        const res = await fetch('/api/settings', { method:'PUT', headers: authHeaders({'Content-Type':'application/json'}), body: JSON.stringify(body) });
+        if (!res.ok) { const txt = await res.text(); status('Settings save failed: ' + txt); return; }
+        await loadSettings();
+        status('Saved settings.');
+      } catch (e) { status('Settings save failed: ' + e.message); }
+    }
+    async function saveTokensHandler() {
+      try {
+        const body = await gatherSettings(true);
+        body.terminus.obtainedAt = Date.now();
+        const res = await fetch('/api/settings', { method:'PUT', headers: authHeaders({'Content-Type':'application/json'}), body: JSON.stringify(body) });
+        if (!res.ok) { status('Save tokens failed: ' + await res.text()); return; }
+        await loadSettings();
+        status('Saved tokens.');
+      } catch (e) { status('Save tokens failed: ' + e.message); }
+    }
+    async function terminusLogin() {
+      try {
+        const apiUrl = document.getElementById('terminus_api_url').value.trim();
+        const login = document.getElementById('terminus_login').value.trim();
+        const password = document.getElementById('terminus_password').value;
+        const res = await fetch('/api/terminus/login', { method:'POST', headers: authHeaders({'Content-Type':'application/json'}), body: JSON.stringify({ apiUrl, login, password }) });
+        const j = await res.json();
+        if (!res.ok || !j.success) { status('Terminus login failed: ' + (j.error || res.status)); return; }
+        await loadSettings();
+        status('Authenticated with Terminus at ' + new Date(j.obtained_at).toLocaleString() + '.');
+      } catch (e) { status('Terminus login failed: ' + e.message); }
+    }
+    async function terminusRefresh() {
+      try {
+        const res = await fetch('/api/terminus/refresh', { method:'POST', headers: authHeaders() });
+        const j = await res.json();
+        if (!res.ok || !j.success) { status('Terminus refresh failed: ' + (j.error || res.status)); return; }
+        await loadSettings();
+        status('Refreshed tokens at ' + new Date(j.obtained_at).toLocaleString() + '.');
+      } catch (e) { status('Terminus refresh failed: ' + e.message); }
+    }
+    async function terminusClear() {
+      try {
+        const res = await fetch('/api/terminus/tokens', { method:'DELETE', headers: authHeaders() });
+        if (!res.ok) { status('Clear tokens failed: ' + await res.text()); return; }
+        await loadSettings();
+        status('Cleared Terminus tokens.');
+      } catch (e) { status('Clear tokens failed: ' + e.message); }
+    }
     function status(message) { statusEl.textContent = message; }
     function clone(value) { return JSON.parse(JSON.stringify(value)); }
     function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     loadConfig().catch(error => status(error.message));
+    loadSettings();
   </script>
 </body>
 </html>`

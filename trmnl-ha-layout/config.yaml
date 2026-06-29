@@ -36,6 +36,7 @@ options:
   terminus_screen_label: Sleep + Weather
   terminus_playlist_id: ""
   terminus_webhook_url: ""
+  settings_token: ""
 schema:
   home_assistant_url: url
   access_token: password
@@ -53,3 +54,4 @@ schema:
   terminus_screen_label: str?
   terminus_playlist_id: str?
   terminus_webhook_url: str?
+  settings_token: password?
