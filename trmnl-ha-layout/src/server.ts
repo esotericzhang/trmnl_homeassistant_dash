@@ -222,6 +222,10 @@ app.get('/render', async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
+app.get('/', (_req, res) => {
+  res.redirect(302, '/editor')
+})
+
 app.get('/editor', (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token : ''
   res.type('html').send(renderEditorHtml(token))

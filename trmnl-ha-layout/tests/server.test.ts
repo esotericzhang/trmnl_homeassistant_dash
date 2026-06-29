@@ -23,7 +23,13 @@ describe('server routes', () => {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   })
 
-  it('serves PNG output and editor UI', async () => {
+  it('redirects root to /editor', async () => {
+    const res = await fetch(`${baseUrl}/`, { redirect: 'manual' })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/editor')
+  })
+
+  it('serves PNG output and editor UI with visible Connection Settings', async () => {
     const png = await fetch(`${baseUrl}/screen.png?sample=1`)
     expect(png.headers.get('content-type')).toContain('image/png')
     const bytes = new Uint8Array(await png.arrayBuffer())
@@ -36,6 +42,11 @@ describe('server routes', () => {
     expect(editorHtml).toContain('src="/screen.svg?sample=1"')
     expect(editorHtml).toContain('id="overlay"')
     expect(editorHtml).toContain('Connection Settings')
+    expect(editorHtml).toContain('<details class="settings" open>')
+    expect(editorHtml).toContain('Terminus API URL')
+    expect(editorHtml).toContain('id="terminus_api_url"')
+    expect(editorHtml).toContain('Home Assistant URL')
+    expect(editorHtml).toContain('id="home_assistant_url"')
   })
 })
 

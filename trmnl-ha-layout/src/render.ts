@@ -66,7 +66,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     <section class="stage-wrap"><p class="stage-label">Seeed Studio TRMNL OG frame, 800×480</p><div id="stage"><img id="preview-frame" src="/screen.svg?sample=1" alt="Rendered sample preview"><div id="overlay"></div></div></section>
     <aside>
       <h2>Selected item</h2><div id="empty">Select an item to edit it.</div><form id="form" hidden></form>
-      <details class="settings"><summary>Connection Settings</summary><div class="settings-body" id="settings-body"><p class="hint">Loading settings…</p></div></details>
+      <details class="settings" open><summary>Connection Settings</summary><div class="settings-body" id="settings-body"><p class="hint">Loading settings…</p></div></details>
       <h3>Status</h3><pre id="status">Loading...</pre>
     </aside>
   </main>
