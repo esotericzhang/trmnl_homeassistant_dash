@@ -131,6 +131,26 @@ describe('settings + terminus auth routes', () => {
     expect(direct.terminus.modelId).toBe('og')
   })
 
+  it('requires mutation auth for layout config updates', async () => {
+    const existing = loadSettings()
+    saveSettings({ ...existing, settingsToken: 'guard-token' })
+
+    const unauthorized = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    expect(unauthorized.status).toBe(401)
+  })
+
+  it('requires mutation auth for manual refresh pushes', async () => {
+    const existing = loadSettings()
+    saveSettings({ ...existing, settingsToken: 'guard-token' })
+
+    const unauthorized = await fetch(`${baseUrl}/api/refresh`, { method: 'POST' })
+    expect(unauthorized.status).toBe(401)
+  })
+
   it('keeps existing tokens when masked values submitted', async () => {
     const res = await fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',

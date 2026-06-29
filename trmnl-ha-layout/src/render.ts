@@ -268,7 +268,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
         + (showAuth ? '<div class="section-title">JWT authentication</div><div class="auth-block">' + pillHtml + authHtml + '</div>' : '')
         + '<div class="actions" style="margin-top:12px"><button class="primary" id="save-settings">Save settings</button></div>';
       const modeSelect = document.getElementById('terminus_mode');
-      if (modeSelect) modeSelect.onchange = () => { loadSettings(); };
+      if (modeSelect) modeSelect.onchange = async () => { renderSettings(await gatherSettings(false)); };
       const saveBtn = document.getElementById('save-settings');
       if (saveBtn) saveBtn.onclick = saveSettingsHandler;
       const loginBtn = document.getElementById('login-btn');

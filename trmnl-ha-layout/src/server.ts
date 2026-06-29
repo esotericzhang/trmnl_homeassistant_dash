@@ -2,6 +2,7 @@ import express from 'express'
 import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
+  getAddonOptions,
   loadLayoutConfig,
   loadSettings,
   loadSettingsMasked,
@@ -10,6 +11,7 @@ import {
   normalizeSettings,
   saveLayoutConfig,
   saveSettings,
+  stringOption,
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
@@ -31,7 +33,7 @@ const SETTINGS_TOKEN_ENV = process.env.SETTINGS_TOKEN ?? ''
 const ALLOW_NO_AUTH = process.env.ALLOW_NO_AUTH === '1'
 
 function settingsToken(): string | undefined {
-  return SETTINGS_TOKEN_ENV || loadSettings().settingsToken
+  return SETTINGS_TOKEN_ENV || stringOption(getAddonOptions(), 'settings_token') || loadSettings().settingsToken
 }
 
 function isMutationAuthenticated(req: express.Request): boolean {
@@ -87,10 +89,12 @@ app.get('/api/config', (_req, res, next) => {
 })
 
 app.put('/api/config', (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
   try { res.json(saveLayoutConfig(req.body)) } catch (error) { next(error) }
 })
 
-app.post('/api/refresh', async (_req, res, next) => {
+app.post('/api/refresh', async (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
   try { res.json({ status: 'ok', result: await refreshAndPush(), refreshedAt: lastRefresh }) } catch (error) { next(error) }
 })
 
