@@ -58,6 +58,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     button.primary{background:#0b69ff;color:white;border:0;padding:6px 12px;border-radius:4px}button.secondary{background:#eee;border:0;padding:6px 12px;border-radius:4px}button.danger{background:#c5221f;color:white;border:0;padding:6px 12px;border-radius:4px}
     .hidden{display:none}
     .token-row{display:flex;gap:6px;align-items:center}.token-row input{flex:1}
+    .settings-advanced{margin:8px 0;border:1px solid #eee;border-radius:6px;background:#fafafa}.settings-advanced>summary{cursor:pointer;padding:6px 10px;font-size:13px;color:#666}.settings-advanced[open]>summary{border-bottom:1px solid #eee}.settings-advanced{padding:0 10px 8px}
   </style>
 </head>
 <body>
@@ -257,13 +258,14 @@ export function renderEditorHtml(bootstrapToken = ''): string {
         + '<label>Public base URL</label><input id="public_base_url" type="url" value="' + escapeHtml(settings.publicBaseUrl || '') + '"><div class="hint">Required for byos-uri mode</div>'
         + '<label>Refresh interval (seconds)</label><input id="refresh_interval_seconds" type="number" min="0" value="' + (settings.refreshIntervalSeconds ?? 0) + '"><div class="hint">0 = manual only</div>'
         + '<div class="section-title">Terminus</div>'
-        + '<label>Terminus API URL</label><input id="terminus_api_url" type="url" value="' + escapeHtml(t.apiUrl || '') + '">'
+        + '<label>Terminus server URL</label><input id="terminus_api_url" type="url" value="' + escapeHtml(t.apiUrl || '') + '" placeholder="http://terminus:2300">'
         + '<label>Mode</label><select id="terminus_mode">' + ['screen-content','byos-uri','byos-base64','raw-webhook'].map(m => '<option value="'+m+'" '+(mode===m?'selected':'')+'>'+m+'</option>').join('') + '</select>'
-        + '<label>Model ID</label><input id="terminus_model_id" type="text" value="' + escapeHtml(t.modelId || '') + '">'
-        + '<div class="row"><div><label>Screen name</label><input id="terminus_screen_name" type="text" value="' + escapeHtml(t.screenName || '') + '"></div>'
-        + '<div><label>Screen label</label><input id="terminus_screen_label" type="text" value="' + escapeHtml(t.screenLabel || '') + '"></div></div>'
-        + '<div class="row"><div><label>Playlist ID</label><input id="terminus_playlist_id" type="text" value="' + escapeHtml(t.playlistId || '') + '"></div>'
-        + '<div><label>Screen ID</label><input id="terminus_screen_id" type="text" value="' + escapeHtml(t.screenId || '') + '"></div></div>'
+        + '<details class="settings-advanced"><summary>Screen metadata (optional)</summary>'
+        + '<label>Model ID</label><input id="terminus_model_id" type="text" value="' + escapeHtml(t.modelId || '') + '" placeholder="1">'
+        + '<div class="row"><div><label>Screen name</label><input id="terminus_screen_name" type="text" value="' + escapeHtml(t.screenName || '') + '" placeholder="ha-layout"></div>'
+        + '<div><label>Screen label</label><input id="terminus_screen_label" type="text" value="' + escapeHtml(t.screenLabel || '') + '" placeholder="Home Assistant Layout"></div></div>'
+        + '<label>Playlist ID</label><input id="terminus_playlist_id" type="text" value="' + escapeHtml(t.playlistId || '') + '" placeholder="optional">'
+        + '</details>'
         + (showWebhook ? '<label>Webhook URL</label><input id="terminus_webhook_url" type="url" value="' + escapeHtml(t.webhookUrl || '') + '">' : '')
         + (showAuth ? '<div class="section-title">JWT authentication</div><div class="auth-block">' + pillHtml + authHtml + '</div>' : '')
         + '<div class="actions" style="margin-top:12px"><button class="primary" id="save-settings">Save settings</button></div>';
@@ -299,7 +301,6 @@ export function renderEditorHtml(bootstrapToken = ''): string {
           screenName: val('terminus_screen_name') || undefined,
           screenLabel: val('terminus_screen_label') || undefined,
           playlistId: val('terminus_playlist_id') || undefined,
-          screenId: val('terminus_screen_id') || undefined,
           webhookUrl: val('terminus_webhook_url') || undefined,
           accessToken,
           refreshToken,

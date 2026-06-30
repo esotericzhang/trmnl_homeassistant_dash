@@ -123,6 +123,25 @@ describe('TerminusClient', () => {
     ])
   })
 
+  it('applies sensible defaults for blank model_id, screen_name, and screen_label', async () => {
+    let body = ''
+    const fetcher = (async (_url: URL | RequestInfo, init?: RequestInit) => {
+      body = String(init?.body)
+      return json({ id: 7 })
+    }) as typeof fetch
+
+    await new TerminusClient(fetcher).push(png, {
+      apiUrl: 'http://terminus.local',
+      accessToken: 'jwt',
+      mode: 'byos-base64'
+    })
+
+    const screen = JSON.parse(body).screen
+    expect(screen.model_id).toBe('1')
+    expect(screen.name).toBe('ha-layout')
+    expect(screen.label).toBe('Home Assistant Layout')
+  })
+
   it('posts raw PNG webhooks', async () => {
     let contentType = ''
     let body: BodyInit | null | undefined

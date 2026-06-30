@@ -31,7 +31,6 @@ options:
   terminus_refresh_token: ""
   terminus_mode: byos-uri
   terminus_model_id: "1"
-  terminus_screen_id: ""
   terminus_screen_name: ha-sleep-weather
   terminus_screen_label: Sleep + Weather
   terminus_playlist_id: ""
@@ -49,7 +48,6 @@ schema:
   terminus_refresh_token: password?
   terminus_mode: list(screen-content|byos-uri|byos-base64|raw-webhook)
   terminus_model_id: str?
-  terminus_screen_id: str?
   terminus_screen_name: str?
   terminus_screen_label: str?
   terminus_playlist_id: str?

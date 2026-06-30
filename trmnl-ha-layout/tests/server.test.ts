@@ -43,10 +43,16 @@ describe('server routes', () => {
     expect(editorHtml).toContain('id="overlay"')
     expect(editorHtml).toContain('Connection Settings')
     expect(editorHtml).toContain('<details class="settings" open>')
-    expect(editorHtml).toContain('Terminus API URL')
+    expect(editorHtml).toContain('Terminus server URL')
     expect(editorHtml).toContain('id="terminus_api_url"')
     expect(editorHtml).toContain('Home Assistant URL')
     expect(editorHtml).toContain('id="home_assistant_url"')
+    expect(editorHtml).toContain('Screen metadata (optional)')
+    expect(editorHtml).toContain('id="terminus_model_id"')
+    expect(editorHtml).toContain('id="terminus_screen_name"')
+    expect(editorHtml).toContain('id="terminus_screen_label"')
+    expect(editorHtml).toContain('id="terminus_playlist_id"')
+    expect(editorHtml).not.toContain('id="terminus_screen_id"')
   })
 
   it('serves preview refresh with stored bearer token', async () => {

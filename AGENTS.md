@@ -38,6 +38,14 @@ Config precedence (highest first): `process.env` → `/data/options.json` (addon
 - Terminus delivery-mode strategy refactor, cron/multi-schedule, 422→PATCH optimization.
 - Token soft/hard expiry thresholds (`isRefreshable`/`isTokenValid` proactive keepalive) — reliability gap, not an end-state blocker.
 
+## Connection Settings field simplification
+
+The `/editor` Connection Settings panel was simplified to match upstream `usetrmnl/trmnl-home-assistant` posture — only fields the user must provide are visible by default; derived/optional fields are collapsed or removed:
+
+- **Removed from GUI:** `screen_id` (runtime-derived on 422 conflicts via `GET /api/screens` lookup, not user config — upstream never stores it). Still in the `Settings` schema and `terminusOptionsFromEnv()` for backward compat.
+- **Collapsed into "Screen metadata (optional)" `<details>`:** `model_id`, `screen_name`, `screen_label`, `playlist_id`. These all have sensible server-side defaults applied in `TerminusClient.postScreen()` (`model_id: '1'`, `name: 'ha-layout'`, `label: 'Home Assistant Layout'`) and are not required for basic operation. Upstream has no playlist concept at all; we keep it as an optional advanced field.
+- **Must remain user-facing:** `home_assistant_url`, `ha_token`, `public_base_url` (required for byos-uri), `refresh_interval_seconds`, `terminus_api_url` (our push client uses it as the base; upstream derives from webhook_url but we don't have a single webhook_url field), `terminus_mode`, JWT auth (login/refresh/clear).
+
 ## TerminusClient.login / refresh
 
 `TerminusClient` exposes public `login(apiUrl, login, password)` and `refresh(options)` methods (used by the GUI auth routes) in addition to the internal `resolveAccessToken` used at push time. Both discard the password and return `{ accessToken, refreshToken }`.
