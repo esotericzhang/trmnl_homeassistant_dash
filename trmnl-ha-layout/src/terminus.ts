@@ -58,7 +58,7 @@ export class TerminusClient {
     return 'pushed raw webhook'
   }
 
-  private async postScreen(options: TerminusPushOptions, payload: Record<string, unknown>, retried = false): Promise<string> {
+  private async postScreen(options: TerminusPushOptions, payload: Record<string, unknown>): Promise<string> {
     const screen: Record<string, unknown> = {
       model_id: options.modelId ?? '1',
       label: options.screenLabel ?? 'Home Assistant Layout',
@@ -71,9 +71,9 @@ export class TerminusClient {
       headers: { Authorization: this.authorizationHeader(options.accessToken ?? ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({ screen })
     })
-    if (response.status === 422 && !retried) {
-      const deleted = await this.deleteDuplicateScreen(options)
-      if (deleted) return this.postScreen(options, payload, true)
+    if (response.status === 422) {
+      await this.patchDuplicateScreen(options, screen)
+      return 'pushed Terminus screen'
     }
     if (!response.ok) throw new Error(`Terminus screen push failed: ${response.status} ${await response.text()}`)
     return 'pushed Terminus screen'
@@ -164,12 +164,12 @@ export class TerminusClient {
     return tokenValue(body, ['access_token', 'token', 'jwt'])
   }
 
-  private async deleteDuplicateScreen(options: TerminusPushOptions): Promise<boolean> {
-    if (!options.apiUrl || !options.accessToken) return false
+  private async patchDuplicateScreen(options: TerminusPushOptions, screen: Record<string, unknown>): Promise<void> {
+    if (!options.apiUrl || !options.accessToken) throw new Error('Terminus duplicate screen update requires apiUrl and accessToken')
     const listResponse = await this.fetcher(new URL('/api/screens', options.apiUrl).toString(), {
       headers: { Authorization: this.authorizationHeader(options.accessToken) }
     })
-    if (!listResponse.ok) return false
+    if (!listResponse.ok) throw new Error(`Terminus duplicate screen lookup failed: ${listResponse.status} ${await listResponse.text()}`)
     const body = await listResponse.json() as unknown
     const screens = Array.isArray(body)
       ? body
@@ -184,12 +184,13 @@ export class TerminusClient {
       if (options.screenId && String(screen.id) === options.screenId) return true
       return String(screen.name) === targetName && String(screen.model_id ?? screen.modelId ?? targetModel) === targetModel
     })
-    if (!duplicate?.id) return false
-    const deleteResponse = await this.fetcher(new URL(`/api/screens/${duplicate.id}`, options.apiUrl).toString(), {
-      method: 'DELETE',
-      headers: { Authorization: this.authorizationHeader(options.accessToken) }
+    if (!duplicate?.id) throw new Error(`Terminus duplicate screen update failed: no existing screen found for model_id=${targetModel} name=${targetName}`)
+    const patchResponse = await this.fetcher(new URL(`/api/screens/${duplicate.id}`, options.apiUrl).toString(), {
+      method: 'PATCH',
+      headers: { Authorization: this.authorizationHeader(options.accessToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ screen })
     })
-    return deleteResponse.ok
+    if (!patchResponse.ok) throw new Error(`Terminus duplicate screen update failed: ${patchResponse.status} ${await patchResponse.text()}`)
   }
 
   private authorizationHeader(token: string): string {
