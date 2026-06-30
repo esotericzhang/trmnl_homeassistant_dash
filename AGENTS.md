@@ -10,7 +10,7 @@ All commands run from `trmnl-ha-layout/`:
 
 - `npm run build` — TypeScript compile to `dist/` (entrypoint `dist/src/server.js`).
 - `npm run typecheck` — `tsc --noEmit` (authoritative type check; SourceKit is unreliable).
-- `npm test` — vitest run. 30 tests across 7 files.
+- `npm test` — vitest run. 43 tests across 8 files.
 - `npm run lint` — eslint `. --ext .ts`. `vitest.config.ts` is ignored (not in tsconfig project).
 
 Tests share a vitest setup (`tests/setup.ts`) that redirects `LAYOUT_PATH` to a temp dir so `settings.json` bootstrap-on-first-read never pollutes the repo root. New tests that touch settings/env should follow the same pattern (pass explicit settings paths or set `LAYOUT_PATH` to a temp dir).
@@ -24,7 +24,7 @@ Tests share a vitest setup (`tests/setup.ts`) that redirects `LAYOUT_PATH` to a 
 
 `loadSettingsSafe()` bootstraps an empty `{}` file on first read (no env-var requirement to start). `saveSettings()` writes atomically (tmp + rename, mirroring `saveLayoutConfig()`).
 
-Config precedence (highest first): `process.env` → `/data/options.json` (addon) → `settings.json` (GUI) → defaults. Implemented in `getRuntimeConfig()` and `terminusOptionsFromEnv()`. GUI changes take effect on the next push (no restart) because `refreshAndPush()` re-resolves options per tick.
+Config precedence (highest first): `process.env` → `/data/options.json` (addon) → `settings.json` (GUI) → defaults. Implemented in `getRuntimeConfig()` and `terminusOptionsFromEnv()`. Connection and Terminus GUI changes take effect on the next push (no restart) because `refreshAndPush()` re-resolves options per tick; `refresh_interval_seconds` is read when the scheduler starts, so interval changes require restart.
 
 `GET /api/settings` masks tokens to last-4 (`••••abcd`). `PUT /api/settings` preserves existing tokens when the submitted value is masked (`••••…`) or absent — only real non-masked values overwrite. `POST /api/terminus/login` and `/api/terminus/refresh` discard credentials, persist tokens with `obtainedAt`, and return only `{ success, obtained_at }` (never the tokens themselves — the client re-fetches via GET).
 

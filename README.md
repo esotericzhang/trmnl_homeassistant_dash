@@ -31,7 +31,7 @@ Add this repository to Home Assistant, install **TRMNL HA Layout**, configure th
 
 The editor's **Connection Settings** panel saves runtime settings to `settings.json` next to the layout file. With the default add-on layout path this is `/data/settings.json`; with a custom `LAYOUT_PATH` it is `settings.json` in the same directory as that layout; in standalone development it is `./settings.json`.
 
-Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. The scheduler and push job re-read settings before each refresh, so GUI settings changes do not require a restart.
+Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Refreshes re-read connection and Terminus settings before each push, so those GUI settings changes do not require a restart; changing `refresh_interval_seconds` affects scheduling after restart.
 
 Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
@@ -42,10 +42,11 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `LAYOUT_PATH`: Optional path to YAML layout, default `/data/layout.yaml` when available, otherwise `./data/default-layout.yaml`.
 - `PUBLIC_BASE_URL`: URL Terminus can use to fetch this service, for URI/content integrations.
 - `TERMINUS_API_URL`: Terminus base URL, for example `http://terminus:2300`.
-- `TERMINUS_LOGIN` / `TERMINUS_PASSWORD`: Optional Terminus login for JWT access.
+- `TERMINUS_LOGIN` / `TERMINUS_PASSWORD`: Optional environment/add-on Terminus login for JWT access. The editor login flow stores returned JWT tokens, not credentials.
 - `TERMINUS_ACCESS_TOKEN` / `TERMINUS_REFRESH_TOKEN`: Optional manual Terminus JWT tokens.
 - `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`.
-- `TERMINUS_MODEL_ID`, `TERMINUS_SCREEN_ID`, `TERMINUS_SCREEN_NAME`, `TERMINUS_SCREEN_LABEL`, `TERMINUS_PLAYLIST_ID`: Screen metadata for BYOS pushes.
+- `TERMINUS_MODEL_ID`, `TERMINUS_SCREEN_NAME`, `TERMINUS_SCREEN_LABEL`, `TERMINUS_PLAYLIST_ID`: Optional screen metadata for BYOS pushes; defaults are used when omitted.
+- `TERMINUS_SCREEN_ID`: Optional fallback for duplicate-screen cleanup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
 - `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint for `raw-webhook` mode.
 - `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
 - `SETTINGS_TOKEN`: Optional bearer token required for mutating layout, settings, refresh, and Terminus auth requests.
