@@ -238,6 +238,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       const authModes = ['screen-content','byos-uri','byos-base64'];
       const showAuth = authModes.includes(mode);
       const showWebhook = mode === 'raw-webhook';
+      const showAddonUrl = mode === 'byos-uri';
       const tokenPreview = settings.haToken ? ' (' + settings.haToken + ')' : '';
       const authed = !!t.accessToken;
       const state = expiryState(t.obtainedAt);
@@ -255,11 +256,11 @@ export function renderEditorHtml(bootstrapToken = ''): string {
         '<div class="section-title">Home Assistant</div>'
         + '<label>Home Assistant URL</label><input id="home_assistant_url" type="url" value="' + escapeHtml(settings.homeAssistantUrl || '') + '">'
         + '<label>HA long-lived token</label><div class="token-row"><input id="ha_token" type="password" placeholder="' + escapeHtml(settings.haToken || 'set to replace') + '"><span class="hint">' + escapeHtml(tokenPreview) + '</span></div>'
-        + '<label>Public base URL</label><input id="public_base_url" type="url" value="' + escapeHtml(settings.publicBaseUrl || '') + '"><div class="hint">Required for byos-uri mode</div>'
         + '<label>Refresh interval (seconds)</label><input id="refresh_interval_seconds" type="number" min="0" value="' + (settings.refreshIntervalSeconds ?? 0) + '"><div class="hint">0 = manual only</div>'
         + '<div class="section-title">Terminus</div>'
         + '<label>Terminus server URL</label><input id="terminus_api_url" type="url" value="' + escapeHtml(t.apiUrl || '') + '" placeholder="http://terminus:2300">'
         + '<label>Mode</label><select id="terminus_mode">' + ['screen-content','byos-uri','byos-base64','raw-webhook'].map(m => '<option value="'+m+'" '+(mode===m?'selected':'')+'>'+m+'</option>').join('') + '</select>'
+        + (showAddonUrl ? '<label>Add-on URL</label><input id="public_base_url" type="url" value="' + escapeHtml(settings.publicBaseUrl || '') + '" placeholder="http://host.docker.internal:10000"><div class="hint">Required for byos-uri mode. This is the URL Terminus can use to fetch /screen.png from this dashboard, often different from the browser URL.</div>' : '')
         + '<details class="settings-advanced"><summary>Screen metadata (optional)</summary>'
         + '<label>Model ID</label><input id="terminus_model_id" type="text" value="' + escapeHtml(t.modelId || '') + '" placeholder="1">'
         + '<div class="row"><div><label>Screen name</label><input id="terminus_screen_name" type="text" value="' + escapeHtml(t.screenName || '') + '" placeholder="ha-layout"></div>'
@@ -288,10 +289,11 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       const t = existing.terminus || {};
       const accessToken = includeTokens ? (val('terminus_access_token') || undefined) : (t.accessToken || undefined);
       const refreshToken = includeTokens ? (val('terminus_refresh_token') || undefined) : (t.refreshToken || undefined);
+      const addonUrlInput = document.getElementById('public_base_url');
       return {
         homeAssistantUrl: val('home_assistant_url'),
         haToken: val('ha_token'),
-        publicBaseUrl: val('public_base_url'),
+        publicBaseUrl: addonUrlInput ? val('public_base_url') : (existing.publicBaseUrl || ''),
         refreshIntervalSeconds: Number(val('refresh_interval_seconds') || 0),
         device: existing.device ?? null,
         terminus: {
