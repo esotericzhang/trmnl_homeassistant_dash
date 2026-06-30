@@ -111,7 +111,7 @@ app.put('/api/settings', (req, res, next) => {
     const merged: Settings = {
       ...incoming,
       haToken: incoming.haToken && !incoming.haToken.startsWith('••••') ? incoming.haToken : existing.haToken,
-      settingsToken: incoming.settingsToken ?? existing.settingsToken,
+      settingsToken: incoming.settingsToken && !incoming.settingsToken.startsWith('••••') ? incoming.settingsToken : existing.settingsToken,
       terminus: {
         ...incoming.terminus,
         accessToken: incoming.terminus.accessToken && !incoming.terminus.accessToken.startsWith('••••') ? incoming.terminus.accessToken : existing.terminus.accessToken,

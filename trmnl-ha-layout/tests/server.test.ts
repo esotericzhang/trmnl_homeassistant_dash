@@ -184,12 +184,16 @@ describe('settings + terminus auth routes', () => {
   })
 
   it('keeps existing tokens when masked values submitted', async () => {
+    const existing = loadSettings()
+    saveSettings({ ...existing, settingsToken: 'secret-settings-9012' })
+
     const res = await fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret-settings-9012' },
       body: JSON.stringify({
         homeAssistantUrl: '',
         haToken: '••••12ab',
+        settingsToken: '••••9012',
         publicBaseUrl: '',
         refreshIntervalSeconds: 0,
         terminus: {
@@ -203,6 +207,7 @@ describe('settings + terminus auth routes', () => {
     expect(res.ok).toBe(true)
     const direct = loadSettings()
     expect(direct.haToken).toBe('')
+    expect(direct.settingsToken).toBe('secret-settings-9012')
     expect(direct.terminus.accessToken).toBe('secret-access-1234')
     expect(direct.terminus.refreshToken).toBe('secret-refresh-5678')
   })
