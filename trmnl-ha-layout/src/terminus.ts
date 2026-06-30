@@ -1,4 +1,4 @@
-import { envString, getAddonOptions, loadSettingsSafe, stringOption } from './config.js'
+import { envString, getAddonOptions, loadSettingsSafe, resolveAddonBaseUrl, stringOption } from './config.js'
 import type { TerminusMode } from './config.js'
 
 export interface TerminusPushOptions {
@@ -38,7 +38,7 @@ export class TerminusClient {
   }
 
   private async pushUri(options: TerminusPushOptions): Promise<string> {
-    if (!options.publicBaseUrl) return 'skipped: PUBLIC_BASE_URL is required for byos-uri mode'
+    if (!options.publicBaseUrl) return 'skipped: ADDON_BASE_URL is required for byos-uri mode'
     const uri = new URL('/screen.png', options.publicBaseUrl).toString()
     return this.postScreen(options, { uri, preprocessed: true, file_name: this.fileName(options) })
   }
@@ -221,7 +221,7 @@ export function terminusOptionsFromEnv(): TerminusPushOptions {
     login: envString('TERMINUS_LOGIN') ?? stringOption(options, 'terminus_login'),
     password: envString('TERMINUS_PASSWORD') ?? stringOption(options, 'terminus_password'),
     mode: (envString('TERMINUS_MODE') as TerminusMode | undefined) ?? (stringOption(options, 'terminus_mode') as TerminusMode | undefined) ?? terminus.mode ?? 'byos-uri',
-    publicBaseUrl: envString('PUBLIC_BASE_URL') ?? stringOption(options, 'public_base_url') ?? (settings.publicBaseUrl || undefined),
+    publicBaseUrl: resolveAddonBaseUrl(options, settings.publicBaseUrl) || undefined,
     webhookUrl: envString('TERMINUS_WEBHOOK_URL') ?? stringOption(options, 'terminus_webhook_url') ?? terminus.webhookUrl,
     modelId: envString('TERMINUS_MODEL_ID') ?? stringOption(options, 'terminus_model_id') ?? terminus.modelId,
     screenName: envString('TERMINUS_SCREEN_NAME') ?? stringOption(options, 'terminus_screen_name') ?? terminus.screenName,

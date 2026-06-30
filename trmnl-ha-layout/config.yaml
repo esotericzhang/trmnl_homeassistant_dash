@@ -22,7 +22,7 @@ map:
 options:
   home_assistant_url: http://homeassistant:8123
   access_token: ""
-  public_base_url: ""
+  addon_base_url: ""
   refresh_interval_seconds: 900
   terminus_api_url: ""
   terminus_login: ""
@@ -39,7 +39,7 @@ options:
 schema:
   home_assistant_url: url
   access_token: password
-  public_base_url: str?
+  addon_base_url: str?
   refresh_interval_seconds: int(0,)
   terminus_api_url: str?
   terminus_login: str?

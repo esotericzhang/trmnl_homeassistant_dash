@@ -68,9 +68,18 @@ export function getRuntimeConfig() {
     port: Number(process.env.PORT ?? 10000),
     homeAssistantUrl: envString('HOME_ASSISTANT_URL') ?? stringOption(options, 'home_assistant_url') ?? settings.homeAssistantUrl ?? 'http://homeassistant:8123',
     accessToken: envString('ACCESS_TOKEN') ?? envString('HA_TOKEN') ?? stringOption(options, 'access_token') ?? settings.haToken ?? '',
-    publicBaseUrl: envString('PUBLIC_BASE_URL') ?? stringOption(options, 'public_base_url') ?? settings.publicBaseUrl ?? '',
+    publicBaseUrl: resolveAddonBaseUrl(options, settings.publicBaseUrl),
     refreshIntervalSeconds: Number(process.env.REFRESH_INTERVAL_SECONDS ?? numberOption(options, 'refresh_interval_seconds') ?? settings.refreshIntervalSeconds ?? 0)
   }
+}
+
+export function resolveAddonBaseUrl(options: Record<string, unknown>, settingsValue?: string): string {
+  return envString('ADDON_BASE_URL')
+    ?? envString('PUBLIC_BASE_URL')
+    ?? stringOption(options, 'addon_base_url')
+    ?? stringOption(options, 'public_base_url')
+    ?? settingsValue
+    ?? ''
 }
 
 export function envString(key: string): string | undefined {

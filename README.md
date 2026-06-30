@@ -27,6 +27,59 @@ Open `http://localhost:10000/` to edit the layout and connection settings, or us
 
 Add this repository to Home Assistant, install **TRMNL HA Layout**, configure the add-on options or the editor connection settings, and mount/edit `/data/layout.yaml` if you want custom positions.
 
+## Docker Compose deployment
+
+Use Docker Compose when running this dashboard outside Home Assistant. The container stores both `layout.yaml` and GUI-saved `settings.json` under `/data`, so mount that directory to keep layout and connection settings across upgrades.
+
+Minimal `docker-compose.yml`:
+
+```yaml
+services:
+  trmnl-ha-layout:
+    build: ./trmnl-ha-layout
+    container_name: trmnl-ha-layout
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./trmnl-ha-data:/data
+    environment:
+      PORT: "10000"
+      LAYOUT_PATH: /data/layout.yaml
+      HOME_ASSISTANT_URL: http://homeassistant.local:8123
+      ACCESS_TOKEN: replace_with_home_assistant_long_lived_token
+      TERMINUS_API_URL: http://terminus:2300
+      TERMINUS_MODE: byos-uri
+      ADDON_BASE_URL: http://host.docker.internal:10000
+      REFRESH_INTERVAL_SECONDS: "900"
+      SETTINGS_TOKEN: replace_with_editor_token
+```
+
+Start the app and open the editor:
+
+```bash
+docker compose up -d
+open http://localhost:10000/editor?token=replace_with_editor_token
+```
+
+Required settings:
+
+- `HOME_ASSISTANT_URL`: Home Assistant base URL reachable from the dashboard container.
+- `ACCESS_TOKEN` or `HA_TOKEN`: Home Assistant long-lived access token.
+- `TERMINUS_API_URL`: Terminus base URL reachable from the dashboard container when using Terminus push modes.
+- `ADDON_BASE_URL`: Required only for `TERMINUS_MODE=byos-uri`; this is the URL Terminus can use to fetch `http://.../screen.png` from this dashboard.
+- `SETTINGS_TOKEN`: Strongly recommended for any deployment reachable beyond your machine; use `/editor?token=<token>` once so the browser stores it for settings saves.
+
+Optional settings can be left out of Compose and saved in the editor's **Connection Settings** panel instead. Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
+
+Add-on URL examples for `byos-uri` mode:
+
+- Same Docker Desktop host: set `ADDON_BASE_URL=http://host.docker.internal:10000` so a Terminus container can call back to the dashboard through the host port mapping.
+- Same LAN: set `ADDON_BASE_URL=http://<host-lan-ip>:10000`, for example `http://192.168.1.50:10000`, and make sure the host firewall allows the port.
+- Behind a reverse proxy: set `ADDON_BASE_URL=https://trmnl-ha.example.com` and route that host to the dashboard container's port `10000`.
+
+`localhost` is usually wrong for Add-on URL from inside the Terminus container. From Terminus, `localhost` means the Terminus container itself, not this dashboard. Use `host.docker.internal` on Docker Desktop, a LAN IP/hostname, or a reverse-proxy URL that Terminus can reach.
+
 ## Configuration and settings
 
 The editor's **Connection Settings** panel saves runtime settings to `settings.json` next to the layout file. With the default add-on layout path this is `/data/settings.json`; with a custom `LAYOUT_PATH` it is `settings.json` in the same directory as that layout; in standalone development it is `./settings.json`.
@@ -40,7 +93,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `HOME_ASSISTANT_URL`: Home Assistant base URL, for example `http://homeassistant:8123`.
 - `ACCESS_TOKEN` or `HA_TOKEN`: Home Assistant long-lived token.
 - `LAYOUT_PATH`: Optional path to YAML layout, default `/data/layout.yaml` when available, otherwise `./data/default-layout.yaml`.
-- `PUBLIC_BASE_URL`: URL Terminus can use to fetch this service, for URI/content integrations.
+- `ADDON_BASE_URL`: Add-on URL Terminus can use to fetch this dashboard's `/screen.png` in `byos-uri` mode. `PUBLIC_BASE_URL` remains supported as a legacy alias.
 - `TERMINUS_API_URL`: Terminus base URL, for example `http://terminus:2300`.
 - `TERMINUS_LOGIN` / `TERMINUS_PASSWORD`: Optional environment/add-on Terminus login for JWT access. The editor login flow stores returned JWT tokens, not credentials.
 - `TERMINUS_ACCESS_TOKEN` / `TERMINUS_REFRESH_TOKEN`: Optional manual Terminus JWT tokens.
@@ -51,6 +104,8 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
 - `SETTINGS_TOKEN`: Optional bearer token required for mutating layout, settings, refresh, and Terminus auth requests.
 - `ALLOW_NO_AUTH`: Set to `1` to allow unauthenticated settings mutations without the development warning.
+
+`ADDON_BASE_URL` / `addon_base_url` take precedence over legacy `PUBLIC_BASE_URL` / `public_base_url`; existing legacy values continue to work when the new alias is unset.
 
 ## API
 
