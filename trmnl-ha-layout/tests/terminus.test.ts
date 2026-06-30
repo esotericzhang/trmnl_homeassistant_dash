@@ -99,10 +99,10 @@ describe('TerminusClient', () => {
     expect(authorization).toBe('Bearer jwt')
   })
 
-  it('deletes duplicate screens after a 422 and retries once', async () => {
-    const calls: string[] = []
+  it('patches duplicate screens after a 422 without deleting or retrying POST', async () => {
+    const calls: Array<{ method: string, url: string, body?: string }> = []
     const fetcher = (async (url: URL | RequestInfo, init?: RequestInit) => {
-      calls.push(`${init?.method ?? 'GET'} ${String(url)}`)
+      calls.push({ method: init?.method ?? 'GET', url: String(url), body: init?.body ? String(init.body) : undefined })
       if (calls.length === 1) return new Response('duplicate', { status: 422 })
       if (String(url).endsWith('/api/screens')) return json({ data: [{ id: 9, name: 'ha-layout', model_id: '1' }] })
       return json({ ok: true })
@@ -115,12 +115,52 @@ describe('TerminusClient', () => {
       mode: 'byos-uri'
     })
 
-    expect(calls).toEqual([
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'POST http://terminus.local/api/screens',
       'GET http://terminus.local/api/screens',
-      'DELETE http://terminus.local/api/screens/9',
-      'POST http://terminus.local/api/screens'
+      'PATCH http://terminus.local/api/screens/9'
     ])
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    expect(calls.filter((call) => call.method === 'POST' && call.url.endsWith('/api/screens'))).toHaveLength(1)
+    expect(JSON.parse(calls[2].body ?? '{}')).toEqual({
+      screen: {
+        model_id: '1',
+        label: 'Home Assistant Layout',
+        name: 'ha-layout',
+        uri: 'http://addon.local/screen.png',
+        preprocessed: true,
+        file_name: 'ha-layout.png'
+      }
+    })
+  })
+
+  it('surfaces an error when duplicate screen lookup finds no match', async () => {
+    const fetcher = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url).endsWith('/api/screens') && init?.method === 'POST') return new Response('duplicate', { status: 422 })
+      return json({ data: [{ id: 8, name: 'other-layout', model_id: '1' }] })
+    }) as typeof fetch
+
+    await expect(new TerminusClient(fetcher).push(png, {
+      apiUrl: 'http://terminus.local',
+      accessToken: 'jwt',
+      publicBaseUrl: 'http://addon.local',
+      mode: 'byos-uri'
+    })).rejects.toThrow('no existing screen found for model_id=1 name=ha-layout')
+  })
+
+  it('surfaces an error when duplicate screen patch fails', async () => {
+    const fetcher = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url).endsWith('/api/screens') && init?.method === 'POST') return new Response('duplicate', { status: 422 })
+      if (String(url).endsWith('/api/screens')) return json({ data: [{ id: 9, name: 'ha-layout', model_id: '1' }] })
+      return new Response('bad patch', { status: 500 })
+    }) as typeof fetch
+
+    await expect(new TerminusClient(fetcher).push(png, {
+      apiUrl: 'http://terminus.local',
+      accessToken: 'jwt',
+      publicBaseUrl: 'http://addon.local',
+      mode: 'byos-uri'
+    })).rejects.toThrow('Terminus duplicate screen update failed: 500 bad patch')
   })
 
   it('applies sensible defaults for blank model_id, screen_name, and screen_label', async () => {
