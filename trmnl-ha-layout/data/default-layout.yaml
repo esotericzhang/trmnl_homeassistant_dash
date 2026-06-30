@@ -1,0 +1,104 @@
+frame:
+  width: 800
+  height: 480
+  background: "#ffffff"
+  foreground: "#111111"
+  fontFamily: "Arial, Helvetica, sans-serif"
+data:
+  entities:
+    sleepStart: sensor.google_health_sleep_latest_sleep_start
+    sleepEnd: sensor.google_health_sleep_latest_sleep_end
+    sleepPeriod: sensor.google_health_sleep_latest_sleep_period
+    minutesAsleep: sensor.google_health_sleep_latest_minutes_asleep
+    minutesAwake: sensor.google_health_sleep_latest_minutes_awake
+    hourlyForecast: sensor.weather_hourly_forecast
+    sunNextRising: sensor.sun_next_rising
+    sunNextSetting: sensor.sun_next_setting
+items:
+  - id: title
+    type: text
+    x: 28
+    y: 16
+    width: 300
+    height: 34
+    fontSize: 28
+    weight: 700
+    text: "Sleep + Weather"
+  - id: sleep-heading
+    type: text
+    x: 28
+    y: 54
+    width: 90
+    height: 22
+    fontSize: 18
+    weight: 700
+    text: "Sleep"
+  - id: sleep-period
+    type: text
+    x: 122
+    y: 50
+    width: 118
+    height: 30
+    fontSize: 26
+    weight: 700
+    text: "{{ sleepPeriod }}"
+  - id: sleep-times
+    type: text
+    x: 252
+    y: 55
+    width: 220
+    height: 22
+    fontSize: 18
+    text: "{{ sleepStart | time }} → {{ sleepEnd | time }}"
+  - id: asleep
+    type: metric
+    x: 496
+    y: 16
+    width: 118
+    height: 62
+    label: "Asleep"
+    fontSize: 20
+    value: "{{ minutesAsleep | minutes }}"
+  - id: awake
+    type: metric
+    x: 628
+    y: 16
+    width: 118
+    height: 62
+    label: "Awake"
+    fontSize: 20
+    value: "{{ minutesAwake | minutes }}"
+  - id: sun
+    type: text
+    x: 506
+    y: 82
+    width: 240
+    height: 20
+    fontSize: 16
+    align: right
+    text: "☀ {{ sunNextRising | time }}   ◐ {{ sunNextSetting | time }}"
+  - id: divider
+    type: line
+    x: 28
+    y: 104
+    width: 744
+    height: 0
+  - id: forecast
+    type: forecast
+    x: 28
+    y: 122
+    width: 744
+    height: 342
+    fontSize: 31
+    weight: 900
+    rowHeight: 42
+    maxItems: 8
+    source: hourlyForecast
+    timeX: 0
+    tempX: 150
+    precipX: 250
+    conditionX: 350
+    conditionFontSize: 30
+    rowDivider: true
+    dividerInset: 0
+    rowPaddingY: 6

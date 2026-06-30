@@ -1,0 +1,55 @@
+name: TRMNL HA Layout
+version: 0.1.0
+slug: trmnl_ha_layout
+description: Render Home Assistant sensors into a precisely positioned TRMNL layout
+url: https://github.com/example/trmnl-homeassistant-dash
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: services
+boot: auto
+ingress: true
+ingress_port: 10000
+panel_icon: mdi:tablet-dashboard
+ports:
+  10000/tcp: 10000
+ports_description:
+  10000/tcp: Web UI and TRMNL pull endpoint
+map:
+  - addon_config:rw
+  - share:rw
+options:
+  home_assistant_url: http://homeassistant:8123
+  access_token: ""
+  public_base_url: ""
+  refresh_interval_seconds: 900
+  terminus_api_url: ""
+  terminus_login: ""
+  terminus_password: ""
+  terminus_access_token: ""
+  terminus_refresh_token: ""
+  terminus_mode: byos-uri
+  terminus_model_id: "1"
+  terminus_screen_name: ha-sleep-weather
+  terminus_screen_label: Sleep + Weather
+  terminus_playlist_id: ""
+  terminus_webhook_url: ""
+  settings_token: ""
+schema:
+  home_assistant_url: url
+  access_token: password
+  public_base_url: str?
+  refresh_interval_seconds: int(0,)
+  terminus_api_url: str?
+  terminus_login: str?
+  terminus_password: password?
+  terminus_access_token: password?
+  terminus_refresh_token: password?
+  terminus_mode: list(screen-content|byos-uri|byos-base64|raw-webhook)
+  terminus_model_id: str?
+  terminus_screen_name: str?
+  terminus_screen_label: str?
+  terminus_playlist_id: str?
+  terminus_webhook_url: str?
+  settings_token: password?
