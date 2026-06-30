@@ -1,4 +1,4 @@
-import { getAddonOptions, loadSettingsSafe, stringOption } from './config.js'
+import { envString, getAddonOptions, loadSettingsSafe, stringOption } from './config.js'
 import type { TerminusMode } from './config.js'
 
 export interface TerminusPushOptions {
@@ -215,18 +215,18 @@ export function terminusOptionsFromEnv(): TerminusPushOptions {
   const settings = loadSettingsSafe()
   const terminus = settings.terminus
   return {
-    apiUrl: process.env.TERMINUS_API_URL ?? stringOption(options, 'terminus_api_url') ?? (terminus.apiUrl || undefined),
-    accessToken: process.env.TERMINUS_ACCESS_TOKEN ?? stringOption(options, 'terminus_access_token') ?? terminus.accessToken,
-    refreshToken: process.env.TERMINUS_REFRESH_TOKEN ?? stringOption(options, 'terminus_refresh_token') ?? terminus.refreshToken,
-    login: process.env.TERMINUS_LOGIN ?? stringOption(options, 'terminus_login'),
-    password: process.env.TERMINUS_PASSWORD ?? stringOption(options, 'terminus_password'),
-    mode: (process.env.TERMINUS_MODE as TerminusMode | undefined) ?? (stringOption(options, 'terminus_mode') as TerminusMode | undefined) ?? terminus.mode ?? 'byos-uri',
-    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? stringOption(options, 'public_base_url') ?? (settings.publicBaseUrl || undefined),
-    webhookUrl: process.env.TERMINUS_WEBHOOK_URL ?? stringOption(options, 'terminus_webhook_url') ?? terminus.webhookUrl,
-    modelId: process.env.TERMINUS_MODEL_ID ?? stringOption(options, 'terminus_model_id') ?? terminus.modelId,
-    screenName: process.env.TERMINUS_SCREEN_NAME ?? stringOption(options, 'terminus_screen_name') ?? terminus.screenName,
-    screenLabel: process.env.TERMINUS_SCREEN_LABEL ?? stringOption(options, 'terminus_screen_label') ?? terminus.screenLabel,
-    playlistId: process.env.TERMINUS_PLAYLIST_ID ?? stringOption(options, 'terminus_playlist_id') ?? terminus.playlistId,
-    screenId: process.env.TERMINUS_SCREEN_ID ?? stringOption(options, 'terminus_screen_id') ?? terminus.screenId
+    apiUrl: envString('TERMINUS_API_URL') ?? stringOption(options, 'terminus_api_url') ?? (terminus.apiUrl || undefined),
+    accessToken: envString('TERMINUS_ACCESS_TOKEN') ?? stringOption(options, 'terminus_access_token') ?? terminus.accessToken,
+    refreshToken: envString('TERMINUS_REFRESH_TOKEN') ?? stringOption(options, 'terminus_refresh_token') ?? terminus.refreshToken,
+    login: envString('TERMINUS_LOGIN') ?? stringOption(options, 'terminus_login'),
+    password: envString('TERMINUS_PASSWORD') ?? stringOption(options, 'terminus_password'),
+    mode: (envString('TERMINUS_MODE') as TerminusMode | undefined) ?? (stringOption(options, 'terminus_mode') as TerminusMode | undefined) ?? terminus.mode ?? 'byos-uri',
+    publicBaseUrl: envString('PUBLIC_BASE_URL') ?? stringOption(options, 'public_base_url') ?? (settings.publicBaseUrl || undefined),
+    webhookUrl: envString('TERMINUS_WEBHOOK_URL') ?? stringOption(options, 'terminus_webhook_url') ?? terminus.webhookUrl,
+    modelId: envString('TERMINUS_MODEL_ID') ?? stringOption(options, 'terminus_model_id') ?? terminus.modelId,
+    screenName: envString('TERMINUS_SCREEN_NAME') ?? stringOption(options, 'terminus_screen_name') ?? terminus.screenName,
+    screenLabel: envString('TERMINUS_SCREEN_LABEL') ?? stringOption(options, 'terminus_screen_label') ?? terminus.screenLabel,
+    playlistId: envString('TERMINUS_PLAYLIST_ID') ?? stringOption(options, 'terminus_playlist_id') ?? terminus.playlistId,
+    screenId: envString('TERMINUS_SCREEN_ID') ?? stringOption(options, 'terminus_screen_id') ?? terminus.screenId
   }
 }

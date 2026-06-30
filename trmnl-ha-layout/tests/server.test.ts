@@ -212,6 +212,45 @@ describe('settings + terminus auth routes', () => {
     expect(direct.terminus.refreshToken).toBe('secret-refresh-5678')
   })
 
+  it('preserves hidden optional terminus fields when omitted', async () => {
+    const existing = loadSettings()
+    saveSettings({
+      ...existing,
+      terminus: {
+        ...existing.terminus,
+        webhookUrl: 'http://webhook.local/push',
+        modelId: 'og',
+        screenName: 'stored-screen',
+        screenLabel: 'Stored Screen',
+        playlistId: 'playlist-1',
+        screenId: 'screen-1'
+      }
+    })
+
+    const res = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        homeAssistantUrl: '',
+        publicBaseUrl: '',
+        refreshIntervalSeconds: 0,
+        terminus: {
+          apiUrl: 'http://terminus.local',
+          mode: 'byos-uri',
+          modelId: ''
+        }
+      })
+    })
+    expect(res.ok).toBe(true)
+    const direct = loadSettings()
+    expect(direct.terminus.webhookUrl).toBe('http://webhook.local/push')
+    expect(direct.terminus.modelId).toBe('')
+    expect(direct.terminus.screenName).toBe('stored-screen')
+    expect(direct.terminus.screenLabel).toBe('Stored Screen')
+    expect(direct.terminus.playlistId).toBe('playlist-1')
+    expect(direct.terminus.screenId).toBe('screen-1')
+  })
+
   it('POST /api/terminus/login proxies to Terminus and persists tokens', async () => {
     const calls: Array<{ url: string; body?: unknown }> = []
     globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {

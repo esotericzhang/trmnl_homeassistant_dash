@@ -106,6 +106,7 @@ app.get('/api/settings', (_req, res, next) => {
 app.put('/api/settings', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try {
+    const body = req.body as Partial<Settings>
     const incoming = normalizeSettings(req.body as Partial<Settings>)
     const existing = loadSettings()
     const merged: Settings = {
@@ -114,6 +115,12 @@ app.put('/api/settings', (req, res, next) => {
       settingsToken: incoming.settingsToken && !incoming.settingsToken.startsWith('••••') ? incoming.settingsToken : existing.settingsToken,
       terminus: {
         ...incoming.terminus,
+        webhookUrl: body.terminus?.webhookUrl === undefined ? existing.terminus.webhookUrl : incoming.terminus.webhookUrl,
+        modelId: body.terminus?.modelId === undefined ? existing.terminus.modelId : incoming.terminus.modelId,
+        screenName: body.terminus?.screenName === undefined ? existing.terminus.screenName : incoming.terminus.screenName,
+        screenLabel: body.terminus?.screenLabel === undefined ? existing.terminus.screenLabel : incoming.terminus.screenLabel,
+        playlistId: body.terminus?.playlistId === undefined ? existing.terminus.playlistId : incoming.terminus.playlistId,
+        screenId: body.terminus?.screenId === undefined ? existing.terminus.screenId : incoming.terminus.screenId,
         accessToken: incoming.terminus.accessToken && !incoming.terminus.accessToken.startsWith('••••') ? incoming.terminus.accessToken : existing.terminus.accessToken,
         refreshToken: incoming.terminus.refreshToken && !incoming.terminus.refreshToken.startsWith('••••') ? incoming.terminus.refreshToken : existing.terminus.refreshToken,
         obtainedAt: incoming.terminus.obtainedAt ?? existing.terminus.obtainedAt

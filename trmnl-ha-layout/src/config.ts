@@ -66,11 +66,16 @@ export function getRuntimeConfig() {
   const settings = loadSettingsSafe()
   return {
     port: Number(process.env.PORT ?? 10000),
-    homeAssistantUrl: process.env.HOME_ASSISTANT_URL ?? stringOption(options, 'home_assistant_url') ?? settings.homeAssistantUrl ?? 'http://homeassistant:8123',
-    accessToken: process.env.ACCESS_TOKEN ?? process.env.HA_TOKEN ?? stringOption(options, 'access_token') ?? settings.haToken ?? '',
-    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? stringOption(options, 'public_base_url') ?? settings.publicBaseUrl ?? '',
+    homeAssistantUrl: envString('HOME_ASSISTANT_URL') ?? stringOption(options, 'home_assistant_url') ?? settings.homeAssistantUrl ?? 'http://homeassistant:8123',
+    accessToken: envString('ACCESS_TOKEN') ?? envString('HA_TOKEN') ?? stringOption(options, 'access_token') ?? settings.haToken ?? '',
+    publicBaseUrl: envString('PUBLIC_BASE_URL') ?? stringOption(options, 'public_base_url') ?? settings.publicBaseUrl ?? '',
     refreshIntervalSeconds: Number(process.env.REFRESH_INTERVAL_SECONDS ?? numberOption(options, 'refresh_interval_seconds') ?? settings.refreshIntervalSeconds ?? 0)
   }
+}
+
+export function envString(key: string): string | undefined {
+  const value = process.env[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 export function getAddonOptions(optionsPath = '/data/options.json'): Record<string, unknown> {

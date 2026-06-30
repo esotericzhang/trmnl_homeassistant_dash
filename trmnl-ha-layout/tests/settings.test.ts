@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  getRuntimeConfig,
   loadSettings,
   loadSettingsSafe,
   loadSettingsMasked,
@@ -181,5 +182,37 @@ describe('env-overrides-settings precedence', () => {
     expect(options.apiUrl).toBe('http://settings-terminus.local')
     expect(options.mode).toBe('byos-base64')
     expect(options.accessToken).toBe('settings-access')
+  })
+
+  it('empty env vars fall through to saved runtime and terminus settings', () => {
+    process.env.HOME_ASSISTANT_URL = ''
+    process.env.ACCESS_TOKEN = ''
+    process.env.PUBLIC_BASE_URL = ''
+    process.env.TERMINUS_API_URL = ''
+    process.env.TERMINUS_ACCESS_TOKEN = ''
+    process.env.TERMINUS_MODE = ''
+    const settingsPath = path.join(dir, 'settings.json')
+    saveSettings({
+      homeAssistantUrl: 'http://settings-ha.local',
+      haToken: 'settings-ha-token',
+      publicBaseUrl: 'http://settings-addon.local',
+      refreshIntervalSeconds: 0,
+      device: null,
+      terminus: {
+        apiUrl: 'http://settings-terminus.local',
+        mode: 'byos-base64',
+        accessToken: 'settings-access'
+      }
+    }, settingsPath)
+
+    expect(getRuntimeConfig()).toMatchObject({
+      homeAssistantUrl: 'http://settings-ha.local',
+      accessToken: 'settings-ha-token',
+      publicBaseUrl: 'http://settings-addon.local'
+    })
+    const options = terminusOptionsFromEnv()
+    expect(options.apiUrl).toBe('http://settings-terminus.local')
+    expect(options.accessToken).toBe('settings-access')
+    expect(options.mode).toBe('byos-base64')
   })
 })
