@@ -29,50 +29,49 @@ Add this repository to Home Assistant, install **TRMNL HA Layout**, configure th
 
 ## Docker Compose deployment
 
-Use Docker Compose when running this dashboard outside Home Assistant. The container stores both `layout.yaml` and GUI-saved `settings.json` under `/data`, so mount that directory to keep layout and connection settings across upgrades.
+Use Docker Compose when running this dashboard outside Home Assistant. Start with Home Assistant access only; Terminus can be configured later in the browser UI at `/editor` under **Connection Settings**.
 
 Minimal `docker-compose.yml`:
 
 ```yaml
 services:
-  trmnl-ha-layout:
+  trmnl-ha:
     build: ./trmnl-ha-layout
-    container_name: trmnl-ha-layout
+    container_name: trmnl-ha
     restart: unless-stopped
     ports:
       - "10000:10000"
-    volumes:
-      - ./trmnl-ha-data:/data
     environment:
-      PORT: "10000"
-      LAYOUT_PATH: /data/layout.yaml
-      HOME_ASSISTANT_URL: http://homeassistant.local:8123
-      ACCESS_TOKEN: replace_with_home_assistant_long_lived_token
-      TERMINUS_API_URL: http://terminus:2300
-      TERMINUS_MODE: byos-uri
-      ADDON_BASE_URL: http://host.docker.internal:10000
-      REFRESH_INTERVAL_SECONDS: "900"
-      SETTINGS_TOKEN: replace_with_editor_token
+      HOME_ASSISTANT_URL: "http://homeassistant.local:8123"
+      ACCESS_TOKEN: "replace_with_home_assistant_long_lived_token"
+      TZ: "America/New_York"
+    volumes:
+      - ./data:/data
 ```
 
-Start the app and open the editor:
+Start the app:
 
 ```bash
 docker compose up -d
-open http://localhost:10000/editor?token=replace_with_editor_token
 ```
 
-Required settings:
+Then open `http://localhost:10000/editor` to edit the layout and save Connection Settings. The `/data` mount persists both `layout.yaml` and GUI-saved `settings.json` across container upgrades.
 
-- `HOME_ASSISTANT_URL`: Home Assistant base URL reachable from the dashboard container.
-- `ACCESS_TOKEN` or `HA_TOKEN`: Home Assistant long-lived access token.
+If a published image exists for your target platform, replace `build: ./trmnl-ha-layout` with `image: ...`.
+
+### Optional Terminus environment configuration
+
+Terminus settings can usually be saved in the editor instead of Compose. Use environment variables when you want container-managed configuration:
+
 - `TERMINUS_API_URL`: Terminus base URL reachable from the dashboard container when using Terminus push modes.
-- `ADDON_BASE_URL`: Required only for `TERMINUS_MODE=byos-uri`; this is the URL Terminus can use to fetch `http://.../screen.png` from this dashboard.
-- `SETTINGS_TOKEN`: Strongly recommended for any deployment reachable beyond your machine; use `/editor?token=<token>` once so the browser stores it for settings saves.
+- `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`.
+- `ADDON_BASE_URL`: Required only for `byos-uri`; this is the URL Terminus can use to fetch this dashboard's `/screen.png`.
+- `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
+- `SETTINGS_TOKEN`: Optional bearer token for mutating layout, settings, refresh, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it.
 
-Optional settings can be left out of Compose and saved in the editor's **Connection Settings** panel instead. Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
+Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
 
-Add-on URL examples for `byos-uri` mode:
+Add-on URL examples for `byos-uri`:
 
 - Same Docker Desktop host: set `ADDON_BASE_URL=http://host.docker.internal:10000` so a Terminus container can call back to the dashboard through the host port mapping.
 - Same LAN: set `ADDON_BASE_URL=http://<host-lan-ip>:10000`, for example `http://192.168.1.50:10000`, and make sure the host firewall allows the port.
