@@ -31,12 +31,12 @@ Add this repository to Home Assistant, install **TRMNL HA Layout**, configure th
 
 Use Docker Compose when running this dashboard outside Home Assistant. Start with Home Assistant access only; Terminus can be configured later in the browser UI at `/editor` under **Connection Settings**.
 
-Minimal `docker-compose.yml`:
+A prebuilt multi-arch image (amd64 + arm64) is published to GHCR on every push to `main`:
 
 ```yaml
 services:
   trmnl-ha:
-    build: ./trmnl-ha-layout
+    image: ghcr.io/esotericzhang/trmnl_homeassistant_dash:latest
     container_name: trmnl-ha
     restart: unless-stopped
     ports:
@@ -49,6 +49,8 @@ services:
       - ./data:/data
 ```
 
+To build from source instead, replace `image:` with `build: ./trmnl-ha-layout`.
+
 Start the app:
 
 ```bash
@@ -56,8 +58,6 @@ docker compose up -d
 ```
 
 Then open `http://localhost:10000/editor` to edit the layout and save Connection Settings. The `/data` mount persists both `layout.yaml` and GUI-saved `settings.json` across container upgrades.
-
-If a published image exists for your target platform, replace `build: ./trmnl-ha-layout` with `image: ...`.
 
 ### Optional Terminus environment configuration
 
