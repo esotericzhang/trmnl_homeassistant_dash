@@ -11,6 +11,7 @@ RUN npm run build
 
 FROM node:24-alpine
 WORKDIR /app
+RUN apk add --no-cache fontconfig font-terminus font-dejavu font-noto
 ENV NODE_ENV=production PORT=10000 LAYOUT_PATH=/data/layout.yaml
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
