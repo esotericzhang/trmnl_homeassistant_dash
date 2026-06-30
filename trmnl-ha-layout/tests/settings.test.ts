@@ -9,6 +9,7 @@ import {
   loadSettingsMasked,
   maskToken,
   normalizeSettings,
+  resolveAddonBaseUrl,
   saveSettings,
   validateSettings
 } from '../src/config.js'
@@ -160,6 +161,29 @@ describe('env-overrides-settings precedence', () => {
     expect(options.publicBaseUrl).toBe('http://settings-addon.local')
   })
 
+  it('ADDON_BASE_URL wins over legacy PUBLIC_BASE_URL for runtime and Terminus options', () => {
+    process.env.ADDON_BASE_URL = 'http://addon-env.local:10000'
+    process.env.PUBLIC_BASE_URL = 'http://public-env.local:10000'
+
+    expect(getRuntimeConfig().publicBaseUrl).toBe('http://addon-env.local:10000')
+    expect(terminusOptionsFromEnv().publicBaseUrl).toBe('http://addon-env.local:10000')
+  })
+
+  it('legacy PUBLIC_BASE_URL still works when ADDON_BASE_URL is absent', () => {
+    delete process.env.ADDON_BASE_URL
+    process.env.PUBLIC_BASE_URL = 'http://public-env.local:10000'
+
+    expect(getRuntimeConfig().publicBaseUrl).toBe('http://public-env.local:10000')
+    expect(terminusOptionsFromEnv().publicBaseUrl).toBe('http://public-env.local:10000')
+  })
+
+  it('addon_base_url wins over legacy public_base_url in add-on options', () => {
+    expect(resolveAddonBaseUrl({
+      addon_base_url: 'http://addon-option.local:10000',
+      public_base_url: 'http://public-option.local:10000'
+    }, 'http://settings-addon.local')).toBe('http://addon-option.local:10000')
+  })
+
   it('settings.json provides values when env vars absent', () => {
     delete process.env.TERMINUS_API_URL
     delete process.env.TERMINUS_MODE
@@ -188,6 +212,7 @@ describe('env-overrides-settings precedence', () => {
     process.env.HOME_ASSISTANT_URL = ''
     process.env.ACCESS_TOKEN = ''
     process.env.PUBLIC_BASE_URL = ''
+    process.env.ADDON_BASE_URL = ''
     process.env.TERMINUS_API_URL = ''
     process.env.TERMINUS_ACCESS_TOKEN = ''
     process.env.TERMINUS_MODE = ''
