@@ -41,6 +41,7 @@ function isMutationAuthenticated(req: express.Request): boolean {
   if (!token) {
     if (process.env.NODE_ENV === 'test') return true
     if (ALLOW_NO_AUTH) return true
+    if (process.env.NODE_ENV === 'production') return false
     console.warn('no SETTINGS_TOKEN set; allowing settings mutations in dev mode. Set SETTINGS_TOKEN for production or ALLOW_NO_AUTH=1 to silence.')
     return true
   }

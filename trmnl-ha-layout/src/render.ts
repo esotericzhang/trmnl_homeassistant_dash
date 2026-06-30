@@ -254,7 +254,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       settingsBody.innerHTML =
         '<div class="section-title">Home Assistant</div>'
         + '<label>Home Assistant URL</label><input id="home_assistant_url" type="url" value="' + escapeHtml(settings.homeAssistantUrl || '') + '">'
-        + '<label>HA long-lived token</label><div class="token-row"><input id="ha_token" type="password" placeholder="' + (settings.haToken || 'set to replace') + '"><span class="hint">' + escapeHtml(tokenPreview) + '</span></div>'
+        + '<label>HA long-lived token</label><div class="token-row"><input id="ha_token" type="password" placeholder="' + escapeHtml(settings.haToken || 'set to replace') + '"><span class="hint">' + escapeHtml(tokenPreview) + '</span></div>'
         + '<label>Public base URL</label><input id="public_base_url" type="url" value="' + escapeHtml(settings.publicBaseUrl || '') + '"><div class="hint">Required for byos-uri mode</div>'
         + '<label>Refresh interval (seconds)</label><input id="refresh_interval_seconds" type="number" min="0" value="' + (settings.refreshIntervalSeconds ?? 0) + '"><div class="hint">0 = manual only</div>'
         + '<div class="section-title">Terminus</div>'

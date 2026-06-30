@@ -165,6 +165,24 @@ describe('settings + terminus auth routes', () => {
     expect(unauthorized.status).toBe(401)
   })
 
+  it('rejects unauthenticated mutations in production without an explicit no-auth override', async () => {
+    const originalNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      const existing = loadSettings()
+      saveSettings({ ...existing, settingsToken: undefined })
+
+      const unauthorized = await fetch(`${baseUrl}/api/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      expect(unauthorized.status).toBe(401)
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv
+    }
+  })
+
   it('keeps existing tokens when masked values submitted', async () => {
     const res = await fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',

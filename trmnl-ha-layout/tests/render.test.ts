@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadLayoutConfig } from '../src/config.js'
 import { sampleRenderData } from '../src/homeAssistant.js'
-import { renderSvg } from '../src/render.js'
+import { renderEditorHtml, renderSvg } from '../src/render.js'
 import type { LayoutConfig, RenderData } from '../src/types.js'
 
 describe('renderer', () => {
@@ -135,5 +135,11 @@ describe('renderer', () => {
     const svg = renderSvg(config, { values: { value: '<ok>' }, states: {} })
     expect(svg).toContain('&lt;/text&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;ok&gt;')
     expect(svg).not.toContain('</text><script>')
+  })
+
+  it('escapes masked HA token placeholders in editor settings UI', () => {
+    const html = renderEditorHtml()
+    expect(html).toContain("escapeHtml(settings.haToken || 'set to replace')")
+    expect(html).not.toContain("placeholder=\"' + (settings.haToken || 'set to replace')")
   })
 })
