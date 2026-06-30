@@ -142,4 +142,17 @@ describe('renderer', () => {
     expect(html).toContain("escapeHtml(settings.haToken || 'set to replace')")
     expect(html).not.toContain("placeholder=\"' + (settings.haToken || 'set to replace')")
   })
+
+  it('labels the byos-uri URL as Add-on URL and shows it only for byos-uri mode', () => {
+    const html = renderEditorHtml()
+    expect(html).toContain('const showAddonUrl = mode === \'byos-uri\';')
+    expect(html).toContain('<label>Add-on URL</label>')
+    expect(html).toContain('Terminus can use to fetch /screen.png')
+    expect(html).not.toContain('<label>Public base URL</label>')
+  })
+
+  it('preserves the saved Add-on URL when the field is hidden by another mode', () => {
+    const html = renderEditorHtml()
+    expect(html).toContain("publicBaseUrl: addonUrlInput ? val('public_base_url') : (existing.publicBaseUrl || '')")
+  })
 })
