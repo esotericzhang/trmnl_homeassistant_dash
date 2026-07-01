@@ -42,9 +42,10 @@ services:
     ports:
       - "10000:10000"
     environment:
-      HOME_ASSISTANT_URL: "http://homeassistant.local:8123"
+      HOME_ASSISTANT_URL: "http://192.168.1.50:8123"
       ACCESS_TOKEN: "replace_with_home_assistant_long_lived_token"
       TZ: "America/New_York"
+      ALLOW_NO_AUTH: "1"
     volumes:
       - ./data:/data
 ```
@@ -59,6 +60,13 @@ docker compose up -d
 
 Then open `http://localhost:10000/editor` to edit the layout and save Connection Settings. The `/data` mount persists both `layout.yaml` and GUI-saved `settings.json` across container upgrades.
 
+Use a Home Assistant URL reachable from inside the container. A LAN IP, such as `http://192.168.1.50:8123`, is usually more reliable than `homeassistant.local` or `localhost` in Docker.
+
+The image runs with `NODE_ENV=production`, so mutating endpoints are blocked unless you choose one auth mode:
+
+- Trusted LAN/dev use: set `ALLOW_NO_AUTH="1"` as shown above.
+- Token-protected use: remove `ALLOW_NO_AUTH`, set `SETTINGS_TOKEN="replace_with_editor_token"`, and open `http://localhost:10000/editor?token=replace_with_editor_token` once so the browser stores the token.
+
 ### Optional Terminus environment configuration
 
 Terminus settings can usually be saved in the editor instead of Compose. Use environment variables when you want container-managed configuration:
@@ -70,6 +78,10 @@ Terminus settings can usually be saved in the editor instead of Compose. Use env
 - `SETTINGS_TOKEN`: Optional bearer token for mutating layout, settings, refresh, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it.
 
 Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
+
+`TERMINUS_API_URL` must be the Terminus base URL, for example `http://192.168.1.50:2300`. Do not include `/api/screens`; the app appends `/login`, `/api/screens`, and `/api/jwt` itself.
+
+`GET /api/settings` returns GUI-saved settings from `/data/settings.json` with secrets masked. It does not show environment variable overrides, even though those env values are active at runtime.
 
 Add-on URL examples for `byos-uri`:
 
