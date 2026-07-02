@@ -155,4 +155,17 @@ describe('renderer', () => {
     const html = renderEditorHtml()
     expect(html).toContain("publicBaseUrl: addonUrlInput ? val('public_base_url') : (existing.publicBaseUrl || '')")
   })
+
+  it('includes an add-field mode that creates text and sensor-backed fields', () => {
+    const html = renderEditorHtml()
+    expect(html).toContain('id="add-field"')
+    expect(html).toContain('id="add-panel" class="add-panel" hidden')
+    expect(html).toContain('Static text')
+    expect(html).toContain('Sensor value')
+    expect(html).toContain('addedIds.add(id)')
+    expect(html).toContain('previewFor(item)')
+    expect(html).toContain("config.data.entities[source] = entity")
+    expect(html).toContain("value:'{{ ' + source + ' }}'")
+    expect(html).toContain("status('Added field. Save to persist it to runtime YAML.')")
+  })
 })
