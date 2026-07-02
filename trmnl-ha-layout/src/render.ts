@@ -171,8 +171,10 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       empty.hidden = !!item;
       form.hidden = !item;
       if (!item) return;
-      form.innerHTML = fields.filter(f => f in item || commonField(f, item)).map(fieldHtml).join('');
+      form.innerHTML = fields.filter(f => f in item || commonField(f, item)).map(fieldHtml).join('')
+        + '<div class="actions" style="margin-top:12px"><button class="danger" id="delete-field" type="button">Delete field</button></div>';
       form.querySelectorAll('input,select,textarea').forEach(input => input.addEventListener('input', updateFromForm));
+      document.getElementById('delete-field').onclick = deleteSelectedField;
     }
     function renderAddPanel() {
       const sensor = addType === 'sensor';
@@ -209,6 +211,40 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       else item[name] = raw;
       clamp(item);
       render();
+    }
+    function deleteSelectedField() {
+      const item = selected();
+      if (!item) return;
+      if (!confirm('Delete field "' + item.id + '"? Save afterward to persist this change.')) return;
+      const index = config.items.findIndex(entry => entry.id === item.id);
+      if (index < 0) return;
+      config.items.splice(index, 1);
+      addedIds.delete(item.id);
+      removeUnusedEntities(referencedSources(item));
+      selectedId = config.items[Math.min(index, config.items.length - 1)]?.id ?? config.items[index - 1]?.id;
+      drag = null;
+      render();
+      status('Deleted field. Save to persist it to runtime YAML.');
+    }
+    function removeUnusedEntities(sources) {
+      if (!config.data || !config.data.entities) return;
+      for (const source of sources) {
+        if (source in config.data.entities && !sourceStillReferenced(source)) delete config.data.entities[source];
+      }
+    }
+    function sourceStillReferenced(source) {
+      return config.items.some(item => referencedSources(item).has(source));
+    }
+    function referencedSources(item) {
+      const sources = new Set();
+      for (const value of Object.values(item)) {
+        if (typeof value !== 'string') continue;
+        const pattern = /{{\\s*([a-zA-Z_][a-zA-Z0-9_]*)/g;
+        let match;
+        while ((match = pattern.exec(value))) sources.add(match[1]);
+      }
+      if (item.type === 'forecast' && item.source) sources.add(item.source);
+      return sources;
     }
     function createField() {
       const created = addType === 'sensor' ? createSensorField() : createTextField();

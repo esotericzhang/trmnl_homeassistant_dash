@@ -168,4 +168,14 @@ describe('renderer', () => {
     expect(html).toContain("value:'{{ ' + source + ' }}'")
     expect(html).toContain("status('Added field. Save to persist it to runtime YAML.')")
   })
+
+  it('includes delete-field handling with confirmation and unused entity cleanup', () => {
+    const html = renderEditorHtml()
+    expect(html).toContain('id="delete-field"')
+    expect(html).toContain("confirm('Delete field \"")
+    expect(html).toContain('config.items.splice(index, 1)')
+    expect(html).toContain('removeUnusedEntities(referencedSources(item))')
+    expect(html).toContain('sourceStillReferenced(source)')
+    expect(html).toContain("status('Deleted field. Save to persist it to runtime YAML.')")
+  })
 })
