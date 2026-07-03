@@ -41,6 +41,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     #overlay{position:absolute;inset:0;width:800px;height:480px}
     .item{position:absolute;border:1px solid rgba(20,20,20,.12);background:rgba(255,255,255,.015);overflow:visible;touch-action:none;user-select:none}
     .item:hover{border-color:rgba(20,20,20,.28);background:rgba(255,255,255,.04)}
+    .item-preview{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-start;overflow:hidden;padding:0 2px;color:#111;font-family:Arial,Helvetica,sans-serif;pointer-events:none}.item-preview.metric{padding:8px 12px;background:#f7f7f7;border:1px solid #111;border-radius:10px}.item-preview .muted{color:#555;font-size:18px}.item-preview .metric-value{font-weight:700;margin-top:4px}
     .item-label{display:none;position:absolute;left:2px;top:-18px;max-width:calc(100% - 4px);padding:1px 4px;border-radius:3px;background:rgba(255,255,255,.82);color:rgba(0,0,0,.68);font-size:10px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.12)}
     .item:hover .item-label,.item.selected .item-label{display:block}
     .item.selected{border:2px solid #0b69ff;background:rgba(11,105,255,.04);box-shadow:0 0 0 2px rgba(11,105,255,.18)}.item.selected .item-label{background:rgba(11,105,255,.9);color:white}
@@ -49,6 +50,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     aside{background:white;border:1px solid #ddd;border-radius:8px;padding:14px;min-width:300px}label{display:block;margin:8px 0 3px;font-weight:600}
     input,select,textarea{width:100%;padding:6px;border:1px solid #bbb;border-radius:4px}textarea{min-height:64px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .actions{display:flex;gap:8px;flex-wrap:wrap}pre{white-space:pre-wrap;background:#f7f7f7;padding:8px;border-radius:4px;max-height:120px;overflow:auto}
+    .add-panel{border:2px solid #0b69ff;border-radius:8px;background:#fafcff;box-shadow:0 2px 10px rgba(11,105,255,.12)}.add-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #d9e2ee;font-weight:700}.add-body{padding:12px 14px}.tabs{display:flex;gap:6px;margin-bottom:10px}.tab{border:1px solid #bbb;background:#eee;border-radius:4px;padding:5px 10px}.tab.active{background:#0b69ff;color:white;border-color:#0b69ff}
     details.settings{margin-top:12px;border:1px solid #ddd;border-radius:8px;background:#fafafa}details.settings>summary{cursor:pointer;padding:10px 14px;font-weight:700;border-radius:8px}details.settings[open]>summary{border-bottom:1px solid #ddd}
     .settings-body{padding:12px 14px}.section-title{margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#666}.section-title:first-child{margin-top:0}
     .hint{color:#777;font-size:12px;margin-top:2px}
@@ -62,11 +64,12 @@ export function renderEditorHtml(bootstrapToken = ''): string {
   </style>
 </head>
 <body>
-  <header><strong>TRMNL Layout Editor</strong><button id="reload">Reload</button><button id="reset">Reset local changes</button><button id="save">Save</button><a style="color:white" href="/preview" target="_blank">Preview</a><a style="color:white" href="/screen.png?sample=1" target="_blank">PNG</a></header>
+  <header><strong>TRMNL Layout Editor</strong><button id="add-field" class="primary">+ Add field</button><button id="reload">Reload</button><button id="reset">Reset local changes</button><button id="save">Save</button><a style="color:white" href="/preview" target="_blank">Preview</a><a style="color:white" href="/screen.png?sample=1" target="_blank">PNG</a></header>
   <main>
     <section class="stage-wrap"><p class="stage-label">Seeed Studio TRMNL OG frame, 800×480</p><div id="stage"><img id="preview-frame" src="/screen.svg?sample=1" alt="Rendered sample preview"><div id="overlay"></div></div></section>
     <aside>
-      <h2>Selected item</h2><div id="empty">Select an item to edit it.</div><form id="form" hidden></form>
+      <div id="edit-panel"><h2>Selected item</h2><div id="empty">Select an item to edit it.</div><form id="form" hidden></form></div>
+      <div id="add-panel" class="add-panel" hidden></div>
       <details class="settings" open><summary>Connection Settings</summary><div class="settings-body" id="settings-body"><p class="hint">Loading settings…</p></div></details>
       <h3>Status</h3><pre id="status">Loading...</pre>
     </aside>
@@ -77,9 +80,12 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     const previewFrame = document.getElementById('preview-frame');
     const form = document.getElementById('form');
     const empty = document.getElementById('empty');
+    const editPanel = document.getElementById('edit-panel');
+    const addPanel = document.getElementById('add-panel');
     const statusEl = document.getElementById('status');
     const settingsBody = document.getElementById('settings-body');
-    let config, loadedConfig, selectedId, drag;
+    let config, loadedConfig, selectedId, drag, addMode = false, addType = 'text';
+    const addedIds = new Set();
     const settingsToken = sessionStorage.getItem('trmnl_settings_token') || ${JSON.stringify(bootstrapToken)};
     if (settingsToken) sessionStorage.setItem('trmnl_settings_token', settingsToken);
     function authHeaders(extra) { const h = Object.assign({}, extra || {}); if (settingsToken) h['Authorization'] = 'Bearer ' + settingsToken; return h; }
@@ -94,11 +100,19 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       if (!res.ok) throw new Error(await res.text());
       config = await res.json();
       loadedConfig = clone(config);
+      addedIds.clear();
       selectedId = config.items[0]?.id;
       render();
       status('Loaded layout.');
     }
     function selected() { return config.items.find(i => i.id === selectedId); }
+    function setAddMode(active) {
+      addMode = active;
+      editPanel.hidden = active;
+      addPanel.hidden = !active;
+      if (active) renderAddPanel();
+      else renderForm();
+    }
     function render() {
       overlay.innerHTML = '';
       stage.style.background = config.frame.background || '#fff';
@@ -114,6 +128,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
         label.className = 'item-label';
         label.textContent = labelFor(item);
         el.appendChild(label);
+        if (addedIds.has(item.id)) el.appendChild(previewFor(item));
         el.dataset.id = item.id;
         const handle = document.createElement('div');
         handle.className = 'resize';
@@ -121,7 +136,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
         el.appendChild(handle);
         overlay.appendChild(el);
       });
-      renderForm();
+      if (addMode) renderAddPanel(); else renderForm();
     }
     function labelFor(item) {
       if (item.type === 'text') return item.id + ' · text';
@@ -129,13 +144,51 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       if (item.type === 'forecast') return 'Forecast: ' + (item.source || '');
       return item.id;
     }
+    function previewFor(item) {
+      const preview = document.createElement('div');
+      preview.className = 'item-preview' + (item.type === 'metric' ? ' metric' : '');
+      if (item.type === 'metric') {
+        const label = document.createElement('div');
+        label.className = 'muted';
+        label.textContent = item.label || '';
+        const value = document.createElement('div');
+        value.className = 'metric-value';
+        value.style.fontSize = (item.fontSize || 30) + 'px';
+        value.textContent = item.value || '';
+        preview.appendChild(label);
+        preview.appendChild(value);
+      } else if (item.type === 'text') {
+        preview.style.fontSize = (item.fontSize || 18) + 'px';
+        preview.style.fontWeight = item.weight || 400;
+        preview.style.textAlign = item.align || 'left';
+        preview.textContent = item.text || '';
+      }
+      return preview;
+    }
     function renderForm() {
+      if (addMode) return;
       const item = selected();
       empty.hidden = !!item;
       form.hidden = !item;
       if (!item) return;
-      form.innerHTML = fields.filter(f => f in item || commonField(f, item)).map(fieldHtml).join('');
+      form.innerHTML = fields.filter(f => f in item || commonField(f, item)).map(fieldHtml).join('')
+        + '<div class="actions" style="margin-top:12px"><button class="danger" id="delete-field" type="button">Delete field</button></div>';
       form.querySelectorAll('input,select,textarea').forEach(input => input.addEventListener('input', updateFromForm));
+      document.getElementById('delete-field').onclick = deleteSelectedField;
+    }
+    function renderAddPanel() {
+      const sensor = addType === 'sensor';
+      addPanel.innerHTML = '<div class="add-head"><span>Add field</span><button class="secondary" id="cancel-add">Cancel</button></div>'
+        + '<div class="add-body">'
+        + '<div class="tabs"><button class="tab '+(!sensor?'active':'')+'" data-add-type="text" type="button">Static text</button><button class="tab '+(sensor?'active':'')+'" data-add-type="sensor" type="button">Sensor value</button></div>'
+        + (sensor
+          ? '<label>Label</label><input id="new-label" value="Sensor"><label>Home Assistant entity id</label><input id="new-entity" placeholder="sensor.outdoor_temperature"><label>Source key</label><input id="new-source" placeholder="outdoorTemperature"><div class="hint">Adds a metric item and data.entities mapping. The value renders as {{ sourceKey }} through the existing pipeline.</div>'
+          : '<label>Visible text</label><input id="new-text" value="New text"><div class="hint">Adds a normal text item. You can edit, drag, resize, and save it like existing text fields.</div>')
+        + '<div class="actions" style="margin-top:12px"><button class="primary" id="create-field" type="button">Create field</button></div>'
+        + '</div>';
+      addPanel.querySelectorAll('[data-add-type]').forEach(button => button.addEventListener('click', () => { addType = button.dataset.addType; renderAddPanel(); }));
+      document.getElementById('cancel-add').onclick = () => setAddMode(false);
+      document.getElementById('create-field').onclick = createField;
     }
     function commonField(name, item) { return ['x','y','width','height','fontSize','weight','align'].includes(name) && item.type !== 'line'; }
     function fieldHtml(name) {
@@ -158,6 +211,96 @@ export function renderEditorHtml(bootstrapToken = ''): string {
       else item[name] = raw;
       clamp(item);
       render();
+    }
+    function deleteSelectedField() {
+      const item = selected();
+      if (!item) return;
+      if (!confirm('Delete field "' + item.id + '"? Save afterward to persist this change.')) return;
+      const index = config.items.findIndex(entry => entry.id === item.id);
+      if (index < 0) return;
+      config.items.splice(index, 1);
+      addedIds.delete(item.id);
+      removeUnusedEntities(referencedSources(item));
+      selectedId = config.items[Math.min(index, config.items.length - 1)]?.id ?? config.items[index - 1]?.id;
+      drag = null;
+      render();
+      status('Deleted field. Save to persist it to runtime YAML.');
+    }
+    function removeUnusedEntities(sources) {
+      if (!config.data || !config.data.entities) return;
+      for (const source of sources) {
+        if (source in config.data.entities && !sourceStillReferenced(source)) delete config.data.entities[source];
+      }
+    }
+    function sourceStillReferenced(source) {
+      return config.items.some(item => referencedSources(item).has(source));
+    }
+    function referencedSources(item) {
+      const sources = new Set();
+      for (const value of Object.values(item)) {
+        if (typeof value !== 'string') continue;
+        const pattern = /{{\\s*([a-zA-Z_][a-zA-Z0-9_]*)/g;
+        let match;
+        while ((match = pattern.exec(value))) sources.add(match[1]);
+      }
+      if (item.type === 'forecast' && item.source) sources.add(item.source);
+      return sources;
+    }
+    function createField() {
+      const created = addType === 'sensor' ? createSensorField() : createTextField();
+      if (!created) return;
+      setAddMode(false);
+      render();
+      status('Added field. Save to persist it to runtime YAML.');
+    }
+    function createTextField() {
+      const text = document.getElementById('new-text').value.trim() || 'New text';
+      const id = uniqueKey(slug(text) || 'text', existingItemIds());
+      const item = { id, type:'text', x:32, y:120, width:220, height:34, fontSize:24, weight:700, text };
+      config.items.push(item);
+      addedIds.add(id);
+      selectedId = id;
+      clamp(item);
+      return true;
+    }
+    function createSensorField() {
+      const label = document.getElementById('new-label').value.trim() || 'Sensor';
+      const entity = document.getElementById('new-entity').value.trim();
+      const requestedSource = document.getElementById('new-source').value.trim();
+      if (!entity) { status('Enter a Home Assistant entity id before creating a sensor field.'); return false; }
+      const source = uniqueKey(camelKey(requestedSource || label || entity) || 'sensor', existingSourceKeys());
+      config.data = config.data || {};
+      config.data.entities = config.data.entities || {};
+      config.data.entities[source] = entity;
+      const id = uniqueKey(slug(label) || 'sensor', existingItemIds());
+      const item = { id, type:'metric', x:32, y:120, width:180, height:62, label, fontSize:24, value:'{{ ' + source + ' }}' };
+      config.items.push(item);
+      addedIds.add(id);
+      selectedId = id;
+      clamp(item);
+      return true;
+    }
+    function existingItemIds() { return new Set(config.items.map(item => item.id)); }
+    function existingSourceKeys() { return new Set(Object.keys((config.data && config.data.entities) || {})); }
+    function uniqueKey(base, existing) {
+      let key = base;
+      let index = 2;
+      while (existing.has(key)) key = base + '-' + index++;
+      existing.add(key);
+      return key;
+    }
+    function slug(value) {
+      return String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+    }
+    function camelKey(value) {
+      const words = String(value).trim().replace(/^[a-z]+\\./i, '').split(/[^a-zA-Z0-9]+/).filter(Boolean);
+      if (!words.length) return '';
+      return words.map((word, index) => {
+        const cleaned = word.replace(/[^a-zA-Z0-9]/g, '');
+        if (!cleaned) return '';
+        const lower = cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
+        return index === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+      }).join('').replace(/^[^a-zA-Z_]+/, '');
     }
     function clamp(item) {
       item.x = Math.max(0, Math.min(config.frame.width - 1, Math.round(item.x)));
@@ -184,9 +327,11 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     });
     stage.addEventListener('pointerup', () => { drag = null; });
     document.getElementById('reload').onclick = () => loadConfig().catch(error => status('Load failed: ' + error.message));
+    document.getElementById('add-field').onclick = () => setAddMode(true);
     document.getElementById('reset').onclick = () => {
       if (!loadedConfig) return;
       config = clone(loadedConfig);
+      addedIds.clear();
       selectedId = config.items.find(i => i.id === selectedId)?.id ?? config.items[0]?.id;
       render();
       status('Reset unsaved edits.');
@@ -198,6 +343,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
         if (!res.ok) throw new Error(await res.text());
         config = await res.json();
         loadedConfig = clone(config);
+        addedIds.clear();
         refreshPreview();
         render();
         status('Saved layout to runtime YAML.');
