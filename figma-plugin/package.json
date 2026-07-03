@@ -1,0 +1,13 @@
+{
+  "name": "trmnl-home-assistant-designer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.116.0",
+    "typescript": "^5.8.3"
+  }
+}

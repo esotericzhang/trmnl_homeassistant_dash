@@ -1,0 +1,15 @@
+{
+  "name": "TRMNL Home Assistant Designer",
+  "id": "trmnl-home-assistant-designer-local",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "src/ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": [
+      "http://localhost:10000",
+      "http://127.0.0.1:10000"
+    ],
+    "reasoning": "The local development plugin fetches sanitized entity and layout bridge endpoints from the dashboard backend. Add LAN hostnames or IPs here for your own local plugin copy before importing the manifest."
+  }
+}

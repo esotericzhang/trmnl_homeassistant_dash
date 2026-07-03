@@ -9,6 +9,7 @@ A Home Assistant compatible add-on and standalone Docker app that renders Home A
 - Default Sleep + Weather dashboard for the Seeed Studio TRMNL 7.5-inch OG DIY Kit, 800x480.
 - Pull endpoints for Terminus or browsers: `/screen.png`, `/screen.svg`, `/render`, `/preview`.
 - Browser layout editor at `/` and `/editor` with drag, resize, style controls, connection settings, and YAML save through `/api/config`.
+- Optional local Figma plugin workflow for designing the same 800x480 frame and saving exported widgets through `/api/figma/layout`.
 - Push endpoint/job for Terminus BYOS Hanami/JWT `/api/screens` or generic PNG webhooks.
 - Refresh scheduling through the editor settings UI or `REFRESH_INTERVAL_SECONDS`.
 
@@ -99,6 +100,86 @@ Configuration precedence is environment variables first, then Home Assistant add
 
 Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
+### Layout and rendering model
+
+The dashboard renders from a YAML layout file, normally `trmnl-ha-layout/data/default-layout.yaml` in local development or `/data/layout.yaml` in the Home Assistant add-on/container. `trmnl-ha-layout/src/config.ts` resolves, validates, loads, and atomically saves this file.
+
+The layout schema is intentionally small:
+
+- `frame`: 800x480 screen metadata with `background`, `foreground`, and `fontFamily`.
+- `data.entities`: a map of local source keys to Home Assistant entity IDs, for example `kitchenTemperature: sensor.kitchen_temperature`.
+- `items`: positioned rendering blocks. Supported item types are `text`, `metric`, `forecast`, and `line`.
+
+`text` and `metric` items can interpolate entity source keys with `{{ key }}`. For example, a metric card uses `value: "{{ kitchenTemperature }}"` and the renderer looks up `data.entities.kitchenTemperature`, fetches that entity through Home Assistant, and draws the current state. `/screen.svg`, `/screen.png`, `/render`, and `/preview` all use the same renderer in `trmnl-ha-layout/src/render.ts`. `/screen.*?sample=1` and `/render?sample=1` use sample data instead of live Home Assistant data.
+
+The Figma workflow exports into this existing schema. It does not introduce a second layout format: Figma text becomes `text` items, Figma cards become `metric` items, and bound Home Assistant entity IDs become `data.entities` entries.
+
+## Figma Plugin Workflow
+
+The local-development plugin lives in `figma-plugin/` and is named **TRMNL Home Assistant Designer**. It is additive; the built-in `/editor` workflow and TRMNL screen push/update behavior remain available.
+
+### Run the dashboard backend
+
+```bash
+cd trmnl-ha-layout
+npm install
+npm run dev
+```
+
+Open `http://localhost:10000/preview` to confirm the backend is running. Configure Home Assistant URL and token in `/editor` if you want live entities. Without a token, the Figma entity bridge returns sample entities from the current layout.
+
+### Build and load the plugin
+
+```bash
+cd figma-plugin
+npm install
+npm run build
+```
+
+In Figma Desktop, choose **Plugins -> Development -> Import plugin from manifest**, then select `figma-plugin/manifest.json`.
+
+The manifest allows local development URLs `http://localhost:10000` and `http://127.0.0.1:10000`. If the dashboard backend runs on another LAN host, edit `figma-plugin/manifest.json` before importing and add that exact origin, for example `http://raspberrypi.local:10000` or `http://192.168.86.40:10000`, under `networkAccess.allowedDomains`. Figma's plugin network-access model requires explicit allowed domains; published plugins cannot generally allow arbitrary private LAN hosts without review constraints, so this plugin is intended for local development/import.
+
+### Design and export
+
+1. Run **TRMNL Home Assistant Designer** from Figma's development plugins menu.
+2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
+3. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
+4. Click **Load Home Assistant Entities** to call `GET {backendUrl}/api/figma/entities`. The plugin receives only sanitized entity metadata: entity ID, friendly name, state, unit, domain, and device class. It never receives Home Assistant credentials.
+5. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
+6. Use **Insert Card** for a simple grayscale metric card with label and large value.
+7. Move and resize the Figma nodes inside the 800x480 frame.
+8. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update bound text/card values where possible.
+9. Click **Export Selected Frame**. The plugin traverses supported nodes, converts them to the dashboard layout schema, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
+10. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, `items`) into the existing YAML config.
+11. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
+
+If `SETTINGS_TOKEN` is configured on the backend, mutating Figma saves also require `Authorization: Bearer <token>`. The MVP plugin does not include a token field, so use local/dev no-auth mode (`ALLOW_NO_AUTH=1`) or the built-in `/editor` for protected production changes.
+
+### Figma workflow limitations
+
+- The plugin talks only to this dashboard bridge. It is not intended to store Home Assistant credentials, and `/api/figma/entities` never returns tokens or sensitive settings.
+- Figma plugin network access and CORS can block LAN hosts unless the exact origin is listed in `manifest.json` before import.
+- Only common text nodes and plugin-created metric card frames export cleanly. Unsupported node types are ignored or produce warnings.
+- The TRMNL screen is black/white/grayscale e-ink; avoid color-dependent designs and tiny typography.
+- Figma plugins do not run in the background. Use **Refresh Selected** after changing Home Assistant state or reloading entities.
+- Preview embedding can be unreliable across local network/CORS boundaries; the plugin opens `{backendUrl}/preview` instead of depending on an embedded image.
+
+### Manual Figma checklist
+
+- Start the backend with `npm run dev` in `trmnl-ha-layout/`.
+- Open `http://localhost:10000/preview` and verify sample rendering works.
+- Build the plugin with `npm run build` in `figma-plugin/`.
+- Import `figma-plugin/manifest.json` in Figma Desktop development plugins.
+- Create an 800x480 TRMNL frame.
+- Load entities and verify no Home Assistant token appears in plugin output, plugin data, browser console, or exported JSON.
+- Insert text and card elements for an entity.
+- Move and resize inserted elements inside the frame.
+- Refresh selected bound elements after reloading entities.
+- Export the selected frame and review warnings.
+- Save to dashboard.
+- Open `/preview`, `/screen.png`, and `/screen.svg` and verify the saved layout renders.
+
 ## Important environment variables
 
 - `HOME_ASSISTANT_URL`: Home Assistant base URL, for example `http://homeassistant:8123`.
@@ -130,10 +211,13 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
+- `GET /api/figma/entities`: returns sanitized entity metadata for the local Figma plugin. It does not expose Home Assistant credentials.
+- `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use.
+- `PUT /api/figma/layout`: validates a Figma-exported 800x480 layout and saves it into the existing YAML layout schema.
 - `GET /api/settings`: returns GUI settings with tokens masked.
 - `PUT /api/settings`: validates and saves GUI settings, preserving already-masked stored tokens.
 - `POST /api/terminus/login`: exchanges a Terminus API URL, login, and password for stored JWT tokens.
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-Mutating endpoints (`PUT /api/config`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+Mutating endpoints (`PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.

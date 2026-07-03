@@ -19,9 +19,22 @@ import { HomeAssistantClient, sampleRenderData } from './homeAssistant.js'
 import { renderEditorHtml, renderHtml, renderPng, renderSvg } from './render.js'
 import { startScheduler } from './scheduler.js'
 import { TerminusClient, terminusOptionsFromEnv } from './terminus.js'
+import type { Align, HassState, LayoutConfig, LayoutItem } from './types.js'
 
 const runtime = getRuntimeConfig()
 const app = express()
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/figma/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type')
+    if (req.method === 'OPTIONS') {
+      res.status(204).send()
+      return
+    }
+  }
+  next()
+})
 app.use(express.json({ limit: '2mb' }))
 
 let lastSvg = ''
@@ -92,6 +105,37 @@ app.get('/api/config', (_req, res, next) => {
 app.put('/api/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try { res.json(saveLayoutConfig(req.body)) } catch (error) { next(error) }
+})
+
+// Local Figma plugin bridge. The plugin talks only to this dashboard bridge and never receives Home Assistant credentials.
+app.get('/api/figma/entities', async (_req, res, next) => {
+  try {
+    const config = await currentRuntime()
+    const layout = loadLayoutConfig()
+    const states = config.accessToken
+      ? await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates()
+      : Object.values(sampleRenderData(layout).states)
+    res.json({ entities: states.map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id)) })
+  } catch (error) { next(error) }
+})
+
+app.put('/api/figma/layout', (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
+  try {
+    const existing = loadLayoutConfig()
+    const replacement = figmaLayoutToConfig(req.body, existing)
+    res.json(saveLayoutConfig(replacement))
+  } catch (error) { next(error) }
+})
+
+app.post('/api/figma/preview-layout', (req, res, next) => {
+  try {
+    const existing = loadLayoutConfig()
+    const layout = figmaLayoutToConfig(req.body, existing)
+    const data = sampleRenderData(layout)
+    const svg = renderSvg(layout, data)
+    res.json({ svg, config: layout })
+  } catch (error) { next(error) }
 })
 
 app.post('/api/refresh', async (req, res, next) => {
@@ -250,7 +294,8 @@ app.get('/preview', (_req, res) => {
 app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   void next
   const message = error instanceof Error ? error.message : String(error)
-  res.status(500).json({ status: 'error', message })
+  const status = error instanceof FigmaLayoutError ? 400 : 500
+  res.status(status).json({ status: 'error', message })
 })
 
 void loadSettingsSafe
@@ -263,3 +308,145 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 export { app, renderCurrent, refreshAndPush }
+
+interface FigmaEntity {
+  entity_id: string
+  name: string
+  state: string
+  unit: string | null
+  domain: string | null
+  device_class: string | null
+}
+
+interface FigmaWidget {
+  type: 'text' | 'metric_card'
+  entity?: string
+  label?: string
+  x: number
+  y: number
+  width: number
+  height: number
+  fontSize?: number
+  align?: Align
+  staticText?: string
+  weight?: number | string
+}
+
+interface FigmaLayout {
+  width: 800
+  height: 480
+  widgets: FigmaWidget[]
+}
+
+class FigmaLayoutError extends Error {}
+
+function sanitizeEntity(state: HassState): FigmaEntity {
+  const attributes = state.attributes ?? {}
+  return {
+    entity_id: state.entity_id,
+    name: stringAttribute(attributes.friendly_name) ?? state.entity_id,
+    state: String(state.state ?? ''),
+    unit: stringAttribute(attributes.unit_of_measurement),
+    domain: state.entity_id.includes('.') ? state.entity_id.split('.')[0] : null,
+    device_class: stringAttribute(attributes.device_class)
+  }
+}
+
+function stringAttribute(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function figmaLayoutToConfig(body: unknown, existing: LayoutConfig): LayoutConfig {
+  const layout = validateFigmaLayout(body)
+  const entities: Record<string, string> = {}
+  const items = layout.widgets.map((widget, index) => widgetToItem(widget, index, entities))
+  return {
+    ...existing,
+    frame: { ...existing.frame, width: 800, height: 480 },
+    data: { ...existing.data, entities },
+    items
+  }
+}
+
+function validateFigmaLayout(body: unknown): FigmaLayout {
+  if (!body || typeof body !== 'object') throw new FigmaLayoutError('request body must be a layout object')
+  const layout = body as Partial<FigmaLayout>
+  if (layout.width !== 800 || layout.height !== 480) throw new FigmaLayoutError('layout width and height must be 800x480')
+  if (!Array.isArray(layout.widgets)) throw new FigmaLayoutError('layout.widgets must be an array')
+  layout.widgets.forEach(validateFigmaWidget)
+  return layout as FigmaLayout
+}
+
+function validateFigmaWidget(widget: unknown, index: number): void {
+  if (!widget || typeof widget !== 'object') throw new FigmaLayoutError(`widget ${index} must be an object`)
+  const item = widget as Partial<FigmaWidget>
+  if (item.type !== 'text' && item.type !== 'metric_card') throw new FigmaLayoutError(`widget ${index} has unsupported type`)
+  for (const key of ['x', 'y', 'width', 'height'] as const) {
+    if (!Number.isFinite(item[key])) throw new FigmaLayoutError(`widget ${index} has invalid ${key}`)
+  }
+  if ((item.x ?? 0) < 0 || (item.y ?? 0) < 0 || (item.width ?? 0) <= 0 || (item.height ?? 0) <= 0) {
+    throw new FigmaLayoutError(`widget ${index} position and size must be positive`)
+  }
+  if ((item.x ?? 0) + (item.width ?? 0) > 800 || (item.y ?? 0) + (item.height ?? 0) > 480) {
+    throw new FigmaLayoutError(`widget ${index} is outside the 800x480 frame`)
+  }
+  if (item.entity !== undefined && (typeof item.entity !== 'string' || !item.entity.includes('.'))) {
+    throw new FigmaLayoutError(`widget ${index} has malformed entity id`)
+  }
+  if (item.type === 'metric_card' && !item.entity) throw new FigmaLayoutError(`widget ${index} metric_card requires entity`)
+  if (item.fontSize !== undefined && (!Number.isFinite(item.fontSize) || item.fontSize <= 0)) {
+    throw new FigmaLayoutError(`widget ${index} has invalid fontSize`)
+  }
+  if (item.align !== undefined && !['left', 'center', 'right'].includes(item.align)) {
+    throw new FigmaLayoutError(`widget ${index} has invalid align`)
+  }
+}
+
+function widgetToItem(widget: FigmaWidget, index: number, entities: Record<string, string>): LayoutItem {
+  const source = widget.entity ? uniqueSourceKey(widget.entity, entities) : undefined
+  if (source && widget.entity) entities[source] = widget.entity
+  const base = {
+    id: uniqueItemId(widget.label || widget.entity || widget.staticText || widget.type, index),
+    x: Math.round(widget.x),
+    y: Math.round(widget.y),
+    width: Math.round(widget.width),
+    height: Math.round(widget.height),
+    fontSize: widget.fontSize ? Math.round(widget.fontSize) : undefined,
+    align: widget.align,
+    weight: widget.weight
+  }
+  if (widget.type === 'metric_card') {
+    return {
+      ...base,
+      type: 'metric',
+      label: widget.label || widget.entity || 'Metric',
+      value: source ? `{{ ${source} }}` : ''
+    }
+  }
+  return {
+    ...base,
+    type: 'text',
+    text: source ? `${widget.label || widget.entity}: {{ ${source} }}` : (widget.staticText || widget.label || 'Text')
+  }
+}
+
+function uniqueSourceKey(entityId: string, entities: Record<string, string>): string {
+  const base = camelKey(entityId.replace(/^[^.]+\./, '')) || 'entity'
+  let key = base
+  let index = 2
+  while (key in entities) key = `${base}${index++}`
+  return key
+}
+
+function uniqueItemId(value: string, index: number): string {
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+  return `${slug || 'figma-widget'}-${index + 1}`
+}
+
+function camelKey(value: string): string {
+  const words = value.split(/[^a-zA-Z0-9]+/).filter(Boolean)
+  return words.map((word, index) => {
+    const lower = word.charAt(0).toLowerCase() + word.slice(1)
+    return index === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1)
+  }).join('').replace(/^[^a-zA-Z_]+/, '')
+}

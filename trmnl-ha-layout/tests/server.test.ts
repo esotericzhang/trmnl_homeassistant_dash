@@ -307,3 +307,92 @@ describe('settings + terminus auth routes', () => {
     expect(direct.terminus.obtainedAt).toBeUndefined()
   })
 })
+
+describe('figma bridge routes', () => {
+  let server: Server
+  let baseUrl: string
+  const originalFetch = globalThis.fetch
+
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => {
+      server = app.listen(0, () => {
+        const address = server.address()
+        if (!address || typeof address === 'string') throw new Error('expected TCP address')
+        baseUrl = `http://127.0.0.1:${address.port}`
+        resolve()
+      })
+    })
+  })
+
+  beforeEach(() => {
+    saveSettings({
+      homeAssistantUrl: 'http://ha.local:8123',
+      haToken: 'secret-ha-token',
+      publicBaseUrl: '',
+      refreshIntervalSeconds: 0,
+      device: null,
+      terminus: { apiUrl: '', mode: 'byos-uri' }
+    })
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  })
+
+  it('GET /api/figma/entities returns sanitized Home Assistant entities', async () => {
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      const urlString = String(url)
+      if (urlString.startsWith(baseUrl)) return originalFetch(url, init)
+      expect(urlString).toBe('http://ha.local:8123/api/states')
+      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer secret-ha-token')
+      return new Response(JSON.stringify([
+        { entity_id: 'sensor.temperature', state: '72.4', attributes: { friendly_name: 'Temperature', unit_of_measurement: '°F', device_class: 'temperature' } }
+      ]), { status: 200 })
+    }) as typeof fetch
+
+    const res = await fetch(`${baseUrl}/api/figma/entities`)
+    expect(res.ok).toBe(true)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+    const body = await res.json() as { entities: Array<Record<string, unknown>> }
+    expect(body.entities).toEqual([
+      { entity_id: 'sensor.temperature', name: 'Temperature', state: '72.4', unit: '°F', domain: 'sensor', device_class: 'temperature' }
+    ])
+    expect(JSON.stringify(body)).not.toContain('secret-ha-token')
+  })
+
+  it('PUT /api/figma/layout maps widgets into the existing layout schema', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        width: 800,
+        height: 480,
+        widgets: [
+          { type: 'text', staticText: 'Kitchen', x: 20, y: 18, width: 220, height: 32, fontSize: 26, align: 'left' },
+          { type: 'metric_card', entity: 'sensor.kitchen_temperature', label: 'Kitchen Temp', x: 24, y: 70, width: 210, height: 92, fontSize: 34 }
+        ]
+      })
+    })
+    expect(res.ok).toBe(true)
+    const body = await res.json()
+    expect(body.frame.width).toBe(800)
+    expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
+    expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', x: 20, y: 18, width: 220, height: 32 })
+    expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}' })
+  })
+
+  it('PUT /api/figma/layout rejects widgets outside the frame', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'metric_card', entity: 'sensor.bad', x: 790, y: 10, width: 40, height: 40 }] })
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toContain('outside the 800x480 frame')
+  })
+})

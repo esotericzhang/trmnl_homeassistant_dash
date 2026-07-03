@@ -13,6 +13,16 @@ export class HomeAssistantClient {
     return response.json() as Promise<HassState>
   }
 
+  async getStates(): Promise<HassState[]> {
+    if (!this.token) throw new Error('Missing Home Assistant token')
+    const url = new URL('/api/states', this.baseUrl)
+    const response = await this.fetcher(url, {
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }
+    })
+    if (!response.ok) throw new Error(`Home Assistant states failed: ${response.status}`)
+    return response.json() as Promise<HassState[]>
+  }
+
   async collect(config: LayoutConfig): Promise<RenderData> {
     const entries = await Promise.all(
       Object.entries(config.data.entities).map(async ([key, entity]) => [key, await this.getState(entity)] as const)

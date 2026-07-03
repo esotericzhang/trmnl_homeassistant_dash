@@ -1,5 +1,8 @@
 node_modules/
 dist/
+!figma-plugin/dist/
+!figma-plugin/dist/code.js
+figma-plugin/dist/types.js
 .env
 /data/
 *.log

@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    *{box-sizing:border-box}body{margin:0;padding:14px;font:12px Inter,system-ui,sans-serif;color:var(--figma-color-text,#111);background:var(--figma-color-bg,#fff)}
+    h1{font-size:16px;margin:0 0 10px}h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;color:var(--figma-color-text-secondary,#555)}
+    label{display:block;font-weight:600;margin:8px 0 4px}input{width:100%;border:1px solid var(--figma-color-border,#ccc);border-radius:5px;padding:8px;background:var(--figma-color-bg,#fff);color:inherit}
+    button{border:1px solid var(--figma-color-border,#bbb);background:var(--figma-color-bg-secondary,#f5f5f5);border-radius:5px;padding:7px 9px;cursor:pointer;color:inherit}button.primary{background:#111;color:white;border-color:#111}button:disabled{opacity:.45;cursor:not-allowed}
+    .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.status{white-space:pre-wrap;border:1px solid var(--figma-color-border,#ddd);border-radius:6px;padding:8px;min-height:36px;background:var(--figma-color-bg-secondary,#f7f7f7)}
+    .entities{border:1px solid var(--figma-color-border,#ddd);border-radius:6px;max-height:210px;overflow:auto}.entity{padding:8px;border-bottom:1px solid var(--figma-color-border,#eee)}.entity:last-child{border-bottom:0}.entity strong{display:block}.muted{color:var(--figma-color-text-secondary,#666)}.actions{display:flex;gap:6px;margin-top:7px}.actions button{flex:0 0 auto}
+    pre{white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;border:1px solid var(--figma-color-border,#ddd);border-radius:6px;padding:8px;background:var(--figma-color-bg-secondary,#f7f7f7)}
+  </style>
+</head>
+<body>
+  <h1>TRMNL Home Assistant Designer</h1>
+  <label for="backend-url">Backend URL</label>
+  <div class="row"><input id="backend-url" value="http://localhost:10000"><button id="save-url">Save</button></div>
+  <h2>Frame</h2>
+  <button class="primary" id="create-frame">Create 800x480 TRMNL Frame</button>
+  <h2>Entities</h2>
+  <div class="row"><input id="search" placeholder="Filter entities"><button id="load-entities">Load</button></div>
+  <div id="entities" class="entities" aria-live="polite"></div>
+  <h2>Selection</h2>
+  <div class="row"><button id="refresh-selected">Refresh Selected</button><button id="export-selected">Export Selected Frame</button></div>
+  <h2>Export</h2>
+  <pre id="export-output">No export yet.</pre>
+  <div class="row"><button id="save-dashboard" class="primary" disabled>Save to Dashboard</button><button id="open-preview">Open Preview</button></div>
+  <h2>Status</h2>
+  <div id="status" class="status">Ready.</div>
+  <script>
+    const $ = id => document.getElementById(id);
+    let entities = [];
+    let exportedLayout = null;
+    const status = message => { $('status').textContent = message; };
+    const backend = () => $('backend-url').value.trim().replace(/\/$/, '') || 'http://localhost:10000';
+    function send(message) { parent.postMessage({ pluginMessage: message }, '*'); }
+    function renderEntities() {
+      const q = $('search').value.trim().toLowerCase();
+      const shown = entities.filter(e => [e.entity_id,e.name,e.state,e.domain].join(' ').toLowerCase().includes(q)).slice(0, 100);
+      $('entities').innerHTML = shown.length ? shown.map((e, i) => '<div class="entity"><strong>'+esc(e.name || e.entity_id)+'</strong><div class="muted">'+esc(e.entity_id)+' · '+esc(e.state || '')+esc(e.unit || '')+'</div><div class="actions"><button data-text="'+i+'">Insert Text</button><button data-card="'+i+'">Insert Card</button></div></div>').join('') : '<div class="entity muted">No entities loaded or matched.</div>';
+      document.querySelectorAll('[data-text]').forEach(btn => btn.onclick = () => send({ type:'insert-text', entity: shown[Number(btn.dataset.text)] }));
+      document.querySelectorAll('[data-card]').forEach(btn => btn.onclick = () => send({ type:'insert-card', entity: shown[Number(btn.dataset.card)] }));
+    }
+    async function fetchJson(url, options) {
+      let res;
+      try { res = await fetch(url, options); } catch (e) { throw new Error('Network/CORS error calling '+url+': '+e.message); }
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch { throw new Error('Expected JSON from '+url+' but got: '+text.slice(0, 120)); }
+      if (!res.ok) throw new Error((json && json.message) || ('HTTP '+res.status));
+      return json;
+    }
+    async function loadEntities() {
+      status('Loading entities...');
+      const json = await fetchJson(backend() + '/api/figma/entities');
+      entities = Array.isArray(json.entities) ? json.entities : [];
+      renderEntities();
+      status('Loaded '+entities.length+' sanitized entities. HA tokens are never sent to this plugin.');
+    }
+    async function saveDashboard() {
+      if (!exportedLayout) return;
+      status('Saving layout to dashboard...');
+      const json = await fetchJson(backend() + '/api/figma/layout', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(exportedLayout) });
+      status('Saved '+(json.items ? json.items.length : exportedLayout.widgets.length)+' widget(s). Open /preview to review.');
+    }
+    function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    $('save-url').onclick = () => { send({ type:'save-backend-url', url: backend() }); status('Backend URL set to '+backend()+'. Also update manifest networkAccess for LAN hosts before importing.'); };
+    $('create-frame').onclick = () => send({ type:'create-frame' });
+    $('load-entities').onclick = () => loadEntities().catch(e => status('Load failed: '+e.message));
+    $('search').oninput = renderEntities;
+    $('refresh-selected').onclick = async () => { if (!entities.length) await loadEntities(); send({ type:'refresh-selected', entities }); };
+    $('export-selected').onclick = () => send({ type:'export-selected' });
+    $('save-dashboard').onclick = () => saveDashboard().catch(e => status('Save failed: '+e.message));
+    $('open-preview').onclick = () => window.open(backend() + '/preview', '_blank');
+    onmessage = event => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+      if (msg.type === 'stored-backend-url') $('backend-url').value = msg.url || 'http://localhost:10000';
+      if (msg.type === 'status') status(msg.message);
+      if (msg.type === 'error') status('Error: '+msg.message);
+      if (msg.type === 'export-result') {
+        exportedLayout = msg.layout;
+        $('export-output').textContent = JSON.stringify(msg.layout, null, 2) + (msg.warnings.length ? '\n\nWarnings:\n- ' + msg.warnings.join('\n- ') : '');
+        $('save-dashboard').disabled = false;
+        status('Exported '+msg.layout.widgets.length+' widget(s).');
+      }
+    };
+    send({ type:'ready' });
+  </script>
+</body>
+</html>

@@ -13,6 +13,10 @@ All commands run from `trmnl-ha-layout/`:
 - `npm test` — vitest run. 43 tests across 8 files.
 - `npm run lint` — eslint `. --ext .ts`. `vitest.config.ts` is ignored (not in tsconfig project).
 
+Figma plugin commands run from `figma-plugin/`:
+
+- `npm run build` — TypeScript compile of `src/code.ts` to `dist/code.js` for the local Figma development manifest.
+
 Tests share a vitest setup (`tests/setup.ts`) that redirects `LAYOUT_PATH` to a temp dir so `settings.json` bootstrap-on-first-read never pollutes the repo root. New tests that touch settings/env should follow the same pattern (pass explicit settings paths or set `LAYOUT_PATH` to a temp dir).
 
 ## Settings persistence (GUI auth migration, task #1)
