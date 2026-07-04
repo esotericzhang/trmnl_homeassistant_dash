@@ -1,4 +1,48 @@
-import type { ExportedLayout, ExportedWidget, FigmaEntity, PluginMessage, UiMessage } from './types'
+type FigmaEntity = {
+  entity_id: string
+  name: string
+  state: string
+  unit?: string | null
+  domain?: string | null
+  device_class?: string | null
+}
+
+type ExportedWidget = {
+  type: 'text' | 'metric_card'
+  entity?: string
+  label?: string
+  x: number
+  y: number
+  width: number
+  height: number
+  fontSize?: number
+  align?: 'left' | 'center' | 'right'
+  staticText?: string
+  weight?: number | string
+}
+
+type ExportedLayout = {
+  width: 800
+  height: 480
+  widgets: ExportedWidget[]
+}
+
+type PluginMessage =
+  | { type: 'ready' }
+  | { type: 'save-backend-url'; url: string }
+  | { type: 'save-dashboard-token'; token: string }
+  | { type: 'create-frame' }
+  | { type: 'insert-text'; entity: FigmaEntity }
+  | { type: 'insert-card'; entity: FigmaEntity }
+  | { type: 'refresh-selected'; entities: FigmaEntity[] }
+  | { type: 'export-selected' }
+
+type UiMessage =
+  | { type: 'stored-backend-url'; url: string }
+  | { type: 'stored-dashboard-token'; token: string }
+  | { type: 'status'; message: string }
+  | { type: 'error'; message: string }
+  | { type: 'export-result'; layout: ExportedLayout; warnings: string[] }
 
 type BoundNode = SceneNode & PluginDataMixin
 
@@ -277,7 +321,7 @@ function cardLabel(node: SceneNode, fallback: string): string {
 }
 
 function textLabel(node: TextNode, fallback: string): string {
-  const label = node.characters.split(':', 1)[0]?.trim()
+  const label = entityLineLabel(node.characters)
   return label || fallback
 }
 
@@ -315,6 +359,11 @@ function refreshedEntityLine(current: string, entity: FigmaEntity): string {
   const separator = current.lastIndexOf(':')
   if (separator === -1) return entityValue(entity)
   return `${current.slice(0, separator + 1)} ${entityValue(entity)}`
+}
+
+function entityLineLabel(current: string): string {
+  const separator = current.lastIndexOf(':')
+  return (separator === -1 ? current : current.slice(0, separator)).trim()
 }
 
 function entityValue(entity: FigmaEntity): string {

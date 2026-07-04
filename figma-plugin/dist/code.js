@@ -1,3 +1,4 @@
+"use strict";
 figma.showUI(__html__, { width: 420, height: 640, themeColors: true });
 figma.ui.onmessage = async (message) => {
     try {
@@ -279,7 +280,7 @@ function cardLabel(node, fallback) {
     return fallback;
 }
 function textLabel(node, fallback) {
-    const label = node.characters.split(':', 1)[0]?.trim();
+    const label = entityLineLabel(node.characters);
     return label || fallback;
 }
 function largestChildFontSize(node) {
@@ -319,10 +320,13 @@ function refreshedEntityLine(current, entity) {
         return entityValue(entity);
     return `${current.slice(0, separator + 1)} ${entityValue(entity)}`;
 }
+function entityLineLabel(current) {
+    const separator = current.lastIndexOf(':');
+    return (separator === -1 ? current : current.slice(0, separator)).trim();
+}
 function entityValue(entity) {
     return `${entity.state}${entity.unit ?? ''}`;
 }
 function blackFill() {
     return [{ type: 'SOLID', color: { r: 0.05, g: 0.05, b: 0.05 } }];
 }
-export {};
