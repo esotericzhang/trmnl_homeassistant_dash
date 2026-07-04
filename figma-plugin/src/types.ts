@@ -30,6 +30,7 @@ export type ExportedLayout = {
 export type PluginMessage =
   | { type: 'ready' }
   | { type: 'save-backend-url'; url: string }
+  | { type: 'save-dashboard-token'; token: string }
   | { type: 'create-frame' }
   | { type: 'insert-text'; entity: FigmaEntity }
   | { type: 'insert-card'; entity: FigmaEntity }
@@ -38,6 +39,7 @@ export type PluginMessage =
 
 export type UiMessage =
   | { type: 'stored-backend-url'; url: string }
+  | { type: 'stored-dashboard-token'; token: string }
   | { type: 'status'; message: string }
   | { type: 'error'; message: string }
   | { type: 'export-result'; layout: ExportedLayout; warnings: string[] }

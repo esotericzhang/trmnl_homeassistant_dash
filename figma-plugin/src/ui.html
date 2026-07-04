@@ -16,6 +16,8 @@
   <h1>TRMNL Home Assistant Designer</h1>
   <label for="backend-url">Backend URL</label>
   <div class="row"><input id="backend-url" value="http://localhost:10000"><button id="save-url">Save</button></div>
+  <label for="dashboard-token">Dashboard Token</label>
+  <div class="row"><input id="dashboard-token" type="password" autocomplete="off" placeholder="Optional SETTINGS_TOKEN"><button id="save-token">Save</button></div>
   <h2>Frame</h2>
   <button class="primary" id="create-frame">Create 800x480 TRMNL Frame</button>
   <h2>Entities</h2>
@@ -34,6 +36,7 @@
     let exportedLayout = null;
     const status = message => { $('status').textContent = message; };
     const backend = () => $('backend-url').value.trim().replace(/\/$/, '') || 'http://localhost:10000';
+    const dashboardToken = () => $('dashboard-token').value.trim();
     function send(message) { parent.postMessage({ pluginMessage: message }, '*'); }
     function renderEntities() {
       const q = $('search').value.trim().toLowerCase();
@@ -43,8 +46,10 @@
       document.querySelectorAll('[data-card]').forEach(btn => btn.onclick = () => send({ type:'insert-card', entity: shown[Number(btn.dataset.card)] }));
     }
     async function fetchJson(url, options) {
+      const headers = Object.assign({}, options && options.headers ? options.headers : {}, dashboardToken() ? { Authorization: 'Bearer ' + dashboardToken() } : {});
+      const requestOptions = Object.assign({}, options || {}, Object.keys(headers).length ? { headers } : {});
       let res;
-      try { res = await fetch(url, options); } catch (e) { throw new Error('Network/CORS error calling '+url+': '+e.message); }
+      try { res = await fetch(url, requestOptions); } catch (e) { throw new Error('Network/CORS error calling '+url+': '+e.message); }
       const text = await res.text();
       let json = null;
       try { json = text ? JSON.parse(text) : null; } catch { throw new Error('Expected JSON from '+url+' but got: '+text.slice(0, 120)); }
@@ -66,6 +71,7 @@
     }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     $('save-url').onclick = () => { send({ type:'save-backend-url', url: backend() }); status('Backend URL set to '+backend()+'. Also update manifest networkAccess for LAN hosts before importing.'); };
+    $('save-token').onclick = () => { send({ type:'save-dashboard-token', token: dashboardToken() }); status(dashboardToken() ? 'Dashboard token saved for protected bridge calls.' : 'Dashboard token cleared. No Authorization header will be sent.'); };
     $('create-frame').onclick = () => send({ type:'create-frame' });
     $('load-entities').onclick = () => loadEntities().catch(e => status('Load failed: '+e.message));
     $('search').oninput = renderEntities;
@@ -77,6 +83,7 @@
       const msg = event.data.pluginMessage;
       if (!msg) return;
       if (msg.type === 'stored-backend-url') $('backend-url').value = msg.url || 'http://localhost:10000';
+      if (msg.type === 'stored-dashboard-token') $('dashboard-token').value = msg.token || '';
       if (msg.type === 'status') status(msg.message);
       if (msg.type === 'error') status('Error: '+msg.message);
       if (msg.type === 'export-result') {

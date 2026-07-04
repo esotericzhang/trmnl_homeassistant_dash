@@ -8,9 +8,13 @@ figma.ui.onmessage = async (message: PluginMessage) => {
   try {
     if (message.type === 'ready') {
       post({ type: 'stored-backend-url', url: await backendUrl() })
+      post({ type: 'stored-dashboard-token', token: await dashboardToken() })
     } else if (message.type === 'save-backend-url') {
       await figma.clientStorage.setAsync('backendUrl', message.url || 'http://localhost:10000')
       post({ type: 'status', message: `Saved backend URL: ${message.url || 'http://localhost:10000'}` })
+    } else if (message.type === 'save-dashboard-token') {
+      await figma.clientStorage.setAsync('dashboardToken', message.token)
+      post({ type: 'status', message: message.token ? 'Saved dashboard token for protected bridge calls.' : 'Cleared dashboard token.' })
     } else if (message.type === 'create-frame') {
       await createTrmnlFrame()
     } else if (message.type === 'insert-text') {
@@ -30,6 +34,11 @@ figma.ui.onmessage = async (message: PluginMessage) => {
 async function backendUrl(): Promise<string> {
   const value = await figma.clientStorage.getAsync('backendUrl')
   return typeof value === 'string' && value.length > 0 ? value : 'http://localhost:10000'
+}
+
+async function dashboardToken(): Promise<string> {
+  const value = await figma.clientStorage.getAsync('dashboardToken')
+  return typeof value === 'string' ? value : ''
 }
 
 function post(message: UiMessage): void {

@@ -144,17 +144,18 @@ The manifest allows local development URLs `http://localhost:10000` and `http://
 
 1. Run **TRMNL Home Assistant Designer** from Figma's development plugins menu.
 2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
-3. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
-4. Click **Load Home Assistant Entities** to call `GET {backendUrl}/api/figma/entities`. The plugin receives only sanitized entity metadata: entity ID, friendly name, state, unit, domain, and device class. It never receives Home Assistant credentials.
-5. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
-6. Use **Insert Card** for a simple grayscale metric card with label and large value.
-7. Move and resize the Figma nodes inside the 800x480 frame.
-8. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update bound text/card values where possible.
-9. Click **Export Selected Frame**. The plugin traverses supported nodes, converts them to the dashboard layout schema, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
-10. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, `items`) into the existing YAML config.
-11. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
+3. If the backend has `SETTINGS_TOKEN` or add-on `settings_token` configured, enter the same value in **Dashboard Token** and click **Save**. The plugin sends it as `Authorization: Bearer <token>` for protected bridge calls. Leave it blank for local no-token development.
+4. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
+5. Click **Load Home Assistant Entities** to call `GET {backendUrl}/api/figma/entities`. The plugin receives only sanitized entity metadata: entity ID, friendly name, state, unit, domain, and device class. It never receives Home Assistant credentials.
+6. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
+7. Use **Insert Card** for a simple grayscale metric card with label and large value.
+8. Move and resize the Figma nodes inside the 800x480 frame.
+9. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update bound text/card values where possible.
+10. Click **Export Selected Frame**. The plugin traverses supported nodes, converts them to the dashboard layout schema, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
+11. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, `items`) into the existing YAML config.
+12. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
-If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities and mutating Figma saves require `Authorization: Bearer <token>`. The MVP plugin does not include a token field, so use local/dev no-auth mode (`ALLOW_NO_AUTH=1`) or the built-in `/editor` for protected production changes.
+If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities and mutating Figma saves require the matching dashboard token in the plugin. If no token is configured, leave **Dashboard Token** blank; the plugin sends no `Authorization` header and preserves local/dev no-auth behavior.
 
 ### Figma workflow limitations
 
@@ -171,6 +172,7 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - Open `http://localhost:10000/preview` and verify sample rendering works.
 - Build the plugin with `npm run build` in `figma-plugin/`.
 - Import `figma-plugin/manifest.json` in Figma Desktop development plugins.
+- If `SETTINGS_TOKEN` is configured, save the same value in **Dashboard Token** before loading entities or saving the dashboard.
 - Create an 800x480 TRMNL frame.
 - Load entities and verify no Home Assistant token appears in plugin output, plugin data, browser console, or exported JSON.
 - Insert text and card elements for an entity.
