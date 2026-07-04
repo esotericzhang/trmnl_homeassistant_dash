@@ -364,6 +364,21 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('secret-ha-token')
   })
 
+  it('GET /api/figma/entities allows no-token production access when no settings token is configured', async () => {
+    const originalNodeEnv = process.env.NODE_ENV
+    const existing = loadSettings()
+    saveSettings({ ...existing, haToken: '', settingsToken: undefined })
+    process.env.NODE_ENV = 'production'
+
+    try {
+      const res = await fetch(`${baseUrl}/api/figma/entities`)
+      expect(res.ok).toBe(true)
+      expect(res.headers.get('access-control-allow-origin')).toBe('*')
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv
+    }
+  })
+
   it('GET /api/figma/entities requires auth when settings token is configured', async () => {
     const existing = loadSettings()
     saveSettings({ ...existing, haToken: '', settingsToken: 'guard-token' })

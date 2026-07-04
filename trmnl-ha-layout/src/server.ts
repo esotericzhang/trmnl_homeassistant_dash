@@ -66,8 +66,25 @@ function isMutationAuthenticated(req: express.Request): boolean {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(token))
 }
 
+function isAuthenticatedWhenTokenConfigured(req: express.Request): boolean {
+  const token = settingsToken()
+  if (!token) return true
+  const header = req.headers.authorization ?? ''
+  const expected = header.startsWith('Bearer ') ? header.slice(7) : ''
+  if (typeof expected !== 'string' || typeof token !== 'string' || expected.length !== token.length) {
+    return false
+  }
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(token))
+}
+
 function requireMutationAuth(req: express.Request, res: express.Response): boolean {
   if (isMutationAuthenticated(req)) return true
+  res.status(401).json({ status: 'error', message: 'unauthorized' })
+  return false
+}
+
+function requireConfiguredTokenAuth(req: express.Request, res: express.Response): boolean {
+  if (isAuthenticatedWhenTokenConfigured(req)) return true
   res.status(401).json({ status: 'error', message: 'unauthorized' })
   return false
 }
@@ -109,7 +126,7 @@ app.put('/api/config', (req, res, next) => {
 
 // Local Figma plugin bridge. The plugin talks only to this dashboard bridge and never receives Home Assistant credentials.
 app.get('/api/figma/entities', async (req, res, next) => {
-  if (!requireMutationAuth(req, res)) return
+  if (!requireConfiguredTokenAuth(req, res)) return
   try {
     const config = await currentRuntime()
     const layout = loadLayoutConfig()
