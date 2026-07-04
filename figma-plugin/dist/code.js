@@ -144,9 +144,9 @@ async function refreshSelected(entities) {
                 if (binding.binding_type === 'metric_value')
                     bound.characters = entityValue(entity);
                 else if (binding.binding_type === 'metric_label')
-                    bound.characters = entity.name || entity.entity_id;
+                    continue;
                 else
-                    bound.characters = entityLine(entity);
+                    bound.characters = refreshedEntityLine(bound.characters, entity);
                 updated++;
             }
         }
@@ -312,6 +312,12 @@ async function loadInter(style) {
 }
 function entityLine(entity) {
     return `${entity.name || entity.entity_id}: ${entityValue(entity)}`;
+}
+function refreshedEntityLine(current, entity) {
+    const separator = current.lastIndexOf(':');
+    if (separator === -1)
+        return entityValue(entity);
+    return `${current.slice(0, separator + 1)} ${entityValue(entity)}`;
 }
 function entityValue(entity) {
     return `${entity.state}${entity.unit ?? ''}`;

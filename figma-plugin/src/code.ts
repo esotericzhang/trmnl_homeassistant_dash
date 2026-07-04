@@ -149,8 +149,8 @@ async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
       if (!entity) continue
       if (bound.type === 'TEXT') {
         if (binding.binding_type === 'metric_value') bound.characters = entityValue(entity)
-        else if (binding.binding_type === 'metric_label') bound.characters = entity.name || entity.entity_id
-        else bound.characters = entityLine(entity)
+        else if (binding.binding_type === 'metric_label') continue
+        else bound.characters = refreshedEntityLine(bound.characters, entity)
         updated++
       }
     }
@@ -309,6 +309,12 @@ async function loadInter(style: 'Regular' | 'Bold'): Promise<void> {
 
 function entityLine(entity: FigmaEntity): string {
   return `${entity.name || entity.entity_id}: ${entityValue(entity)}`
+}
+
+function refreshedEntityLine(current: string, entity: FigmaEntity): string {
+  const separator = current.lastIndexOf(':')
+  if (separator === -1) return entityValue(entity)
+  return `${current.slice(0, separator + 1)} ${entityValue(entity)}`
 }
 
 function entityValue(entity: FigmaEntity): string {
