@@ -83,6 +83,7 @@ async function insertText(entity) {
     node.y = 32;
     node.resize(360, 32);
     setBinding(node, entity, 'text');
+    setBoundTextMetadata(node, entity.name || entity.entity_id, entityValue(entity));
     parent.appendChild(node);
     figma.currentPage.selection = [node];
     figma.viewport.scrollAndZoomIntoView([node]);
@@ -146,8 +147,14 @@ async function refreshSelected(entities) {
                     bound.characters = entityValue(entity);
                 else if (binding.binding_type === 'metric_label')
                     continue;
+                else if (binding.binding_type === 'text') {
+                    const value = entityValue(entity);
+                    const label = boundTextLabel(bound, entity.entity_id, value);
+                    bound.characters = `${label}: ${value}`;
+                    setBoundTextMetadata(bound, label, value);
+                }
                 else
-                    bound.characters = refreshedEntityLine(bound.characters, entity);
+                    bound.characters = entityValue(entity);
                 updated++;
             }
         }
@@ -259,6 +266,10 @@ function setBinding(node, entity, bindingType) {
     node.setPluginData('binding_type', bindingType);
     node.setPluginData('widget_type', bindingType);
 }
+function setBoundTextMetadata(node, label, value) {
+    node.setPluginData('bound_text_label', label);
+    node.setPluginData('bound_text_value', value);
+}
 function readBinding(node) {
     if (!('getPluginData' in node))
         return null;
@@ -280,8 +291,27 @@ function cardLabel(node, fallback) {
     return fallback;
 }
 function textLabel(node, fallback) {
-    const label = entityLineLabel(node.characters);
+    const label = boundTextLabel(node, fallback);
     return label || fallback;
+}
+function boundTextLabel(node, fallback, currentValue) {
+    const stored = node.getPluginData('bound_text_label');
+    const storedValue = node.getPluginData('bound_text_value');
+    const edited = boundTextLabelFromSuffix(node.characters, storedValue || currentValue);
+    if (edited)
+        return edited;
+    if (stored)
+        return stored;
+    node.setPluginData('bound_text_label', fallback);
+    return fallback;
+}
+function boundTextLabelFromSuffix(current, value) {
+    if (!value)
+        return '';
+    const suffix = `: ${value}`;
+    if (!current.endsWith(suffix))
+        return '';
+    return current.slice(0, -suffix.length).trim();
 }
 function largestChildFontSize(node) {
     if (!('children' in node))
@@ -313,16 +343,6 @@ async function loadInter(style) {
 }
 function entityLine(entity) {
     return `${entity.name || entity.entity_id}: ${entityValue(entity)}`;
-}
-function refreshedEntityLine(current, entity) {
-    const separator = current.lastIndexOf(':');
-    if (separator === -1)
-        return entityValue(entity);
-    return `${current.slice(0, separator + 1)} ${entityValue(entity)}`;
-}
-function entityLineLabel(current) {
-    const separator = current.lastIndexOf(':');
-    return (separator === -1 ? current : current.slice(0, separator)).trim();
 }
 function entityValue(entity) {
     return `${entity.state}${entity.unit ?? ''}`;
