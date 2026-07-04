@@ -56,6 +56,7 @@ async function createTrmnlFrame() {
     await loadInter('Regular');
     const label = figma.createText();
     label.name = 'TRMNL guide label';
+    label.setPluginData('trmnl_non_exportable', 'true');
     label.fontName = { family: 'Inter', style: 'Regular' };
     label.characters = 'TRMNL 800x480 e-ink frame';
     label.fontSize = 12;
@@ -158,6 +159,8 @@ function exportSelectedFrame() {
     const widgets = [];
     traverse(frame, (node) => {
         if (node === frame || !('visible' in node) || !node.visible)
+            return;
+        if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true')
             return;
         const widget = exportNode(node, frame, warnings);
         if (widget)
