@@ -217,7 +217,7 @@ function exportNode(node, frame, warnings) {
         return {
             type: 'text',
             entity: binding?.entity_id,
-            label: binding?.entity_id,
+            label: binding ? textLabel(node, binding.entity_id) : undefined,
             staticText: binding ? undefined : node.characters,
             fontSize: typeof node.fontSize === 'number' ? node.fontSize : undefined,
             align: alignFor(node),
@@ -277,6 +277,10 @@ function cardLabel(node, fallback) {
             return label.characters;
     }
     return fallback;
+}
+function textLabel(node, fallback) {
+    const label = node.characters.split(':', 1)[0]?.trim();
+    return label || fallback;
 }
 function largestChildFontSize(node) {
     if (!('children' in node))
