@@ -364,6 +364,21 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('secret-ha-token')
   })
 
+  it('GET /api/figma/entities requires auth when settings token is configured', async () => {
+    const existing = loadSettings()
+    saveSettings({ ...existing, haToken: '', settingsToken: 'guard-token' })
+
+    const unauthorized = await fetch(`${baseUrl}/api/figma/entities`)
+    expect(unauthorized.status).toBe(401)
+    expect(unauthorized.headers.get('access-control-allow-origin')).toBe('*')
+
+    const authorized = await fetch(`${baseUrl}/api/figma/entities`, {
+      headers: { Authorization: 'Bearer guard-token' }
+    })
+    expect(authorized.ok).toBe(true)
+    expect(authorized.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
   it('PUT /api/figma/layout maps widgets into the existing layout schema', async () => {
     const res = await fetch(`${baseUrl}/api/figma/layout`, {
       method: 'PUT',

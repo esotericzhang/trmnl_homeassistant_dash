@@ -126,7 +126,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:10000/preview` to confirm the backend is running. Configure Home Assistant URL and token in `/editor` if you want live entities. Without a token, the Figma entity bridge returns sample entities from the current layout.
+Open `http://localhost:10000/preview` to confirm the backend is running. Configure Home Assistant URL and token in `/editor` if you want live entities. Without a Home Assistant token, the Figma entity bridge returns sample entities from the current layout.
 
 ### Build and load the plugin
 
@@ -154,7 +154,7 @@ The manifest allows local development URLs `http://localhost:10000` and `http://
 10. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, `items`) into the existing YAML config.
 11. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
-If `SETTINGS_TOKEN` is configured on the backend, mutating Figma saves also require `Authorization: Bearer <token>`. The MVP plugin does not include a token field, so use local/dev no-auth mode (`ALLOW_NO_AUTH=1`) or the built-in `/editor` for protected production changes.
+If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities and mutating Figma saves require `Authorization: Bearer <token>`. The MVP plugin does not include a token field, so use local/dev no-auth mode (`ALLOW_NO_AUTH=1`) or the built-in `/editor` for protected production changes.
 
 ### Figma workflow limitations
 
@@ -211,7 +211,7 @@ If `SETTINGS_TOKEN` is configured on the backend, mutating Figma saves also requ
 - `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
-- `GET /api/figma/entities`: returns sanitized entity metadata for the local Figma plugin. It does not expose Home Assistant credentials.
+- `GET /api/figma/entities`: returns sanitized entity metadata for the local Figma plugin. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured and does not expose Home Assistant credentials.
 - `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use.
 - `PUT /api/figma/layout`: validates a Figma-exported 800x480 layout and saves it into the existing YAML layout schema.
 - `GET /api/settings`: returns GUI settings with tokens masked.
@@ -220,4 +220,4 @@ If `SETTINGS_TOKEN` is configured on the backend, mutating Figma saves also requ
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-Mutating endpoints (`PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+Protected endpoints (`GET /api/figma/entities`, `PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
