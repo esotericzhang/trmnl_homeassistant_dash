@@ -63,7 +63,7 @@ Then open `http://localhost:10000/editor` to edit the layout and save Connection
 
 Use a Home Assistant URL reachable from inside the container. A LAN IP, such as `http://192.168.1.50:8123`, is usually more reliable than `homeassistant.local` or `localhost` in Docker.
 
-The image runs with `NODE_ENV=production`, so mutating endpoints are blocked unless you choose one auth mode:
+The image runs with `NODE_ENV=production`, so protected endpoints are blocked unless you choose one auth mode:
 
 - Trusted LAN/dev use: set `ALLOW_NO_AUTH="1"` as shown above.
 - Token-protected use: remove `ALLOW_NO_AUTH`, set `SETTINGS_TOKEN="replace_with_editor_token"`, and open `http://localhost:10000/editor?token=replace_with_editor_token` once so the browser stores the token.
@@ -76,7 +76,7 @@ Terminus settings can usually be saved in the editor instead of Compose. Use env
 - `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`.
 - `ADDON_BASE_URL`: Required only for `byos-uri`; this is the URL Terminus can use to fetch this dashboard's `/screen.png`.
 - `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
-- `SETTINGS_TOKEN`: Optional bearer token for mutating layout, settings, refresh, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it.
+- `SETTINGS_TOKEN`: Optional bearer token for protected layout, settings, refresh, Figma bridge, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it for the editor.
 
 Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
 
@@ -98,7 +98,7 @@ The editor's **Connection Settings** panel saves runtime settings to `settings.j
 
 Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Refreshes re-read connection and Terminus settings before each push, so those GUI settings changes do not require a restart; changing `refresh_interval_seconds` affects scheduling after restart.
 
-Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
+Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect layout/settings mutations and the local Figma entity bridge. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. The Figma plugin has its own **Dashboard Token** field for protected bridge calls. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
 ### Layout and rendering model
 
@@ -146,7 +146,7 @@ The manifest allows local development URLs `http://localhost:10000` and `http://
 2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
 3. If the backend has `SETTINGS_TOKEN` or add-on `settings_token` configured, enter the same value in **Dashboard Token** and click **Save**. The plugin sends it as `Authorization: Bearer <token>` for protected bridge calls. Leave it blank for local no-token development.
 4. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
-5. Click **Load Home Assistant Entities** to call `GET {backendUrl}/api/figma/entities`. The plugin receives only sanitized entity metadata: entity ID, friendly name, state, unit, domain, and device class. It never receives Home Assistant credentials.
+5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The plugin receives only sanitized entity metadata: entity ID, friendly name, state, unit, domain, and device class. It never receives Home Assistant credentials.
 6. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
 7. Use **Insert Card** for a simple grayscale metric card with label and large value.
 8. Move and resize the Figma nodes inside the 800x480 frame.
@@ -196,7 +196,7 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - `TERMINUS_SCREEN_ID`: Optional fallback for duplicate-screen cleanup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
 - `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint for `raw-webhook` mode.
 - `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
-- `SETTINGS_TOKEN`: Optional bearer token required for mutating layout, settings, refresh, and Terminus auth requests.
+- `SETTINGS_TOKEN`: Optional bearer token required for protected layout, settings, refresh, Figma bridge, and Terminus auth requests.
 - `ALLOW_NO_AUTH`: Set to `1` to allow unauthenticated settings mutations without the development warning.
 
 `ADDON_BASE_URL` / `addon_base_url` take precedence over legacy `PUBLIC_BASE_URL` / `public_base_url`; existing legacy values continue to work when the new alias is unset.
