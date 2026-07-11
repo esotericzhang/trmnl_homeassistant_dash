@@ -10,12 +10,14 @@ All commands run from `trmnl-ha-layout/`:
 
 - `npm run build` — TypeScript compile to `dist/` (entrypoint `dist/src/server.js`).
 - `npm run typecheck` — `tsc --noEmit` (authoritative type check; SourceKit is unreliable).
-- `npm test` — vitest run. 43 tests across 8 files.
+- `npm test` — vitest run. 71 tests across 8 files.
 - `npm run lint` — eslint `. --ext .ts`. `vitest.config.ts` is ignored (not in tsconfig project).
 
 Figma plugin commands run from `figma-plugin/`:
 
 - `npm run build` — TypeScript compile of `src/code.ts` to `dist/code.js` for the local Figma development manifest.
+
+The Figma bridge accepts only an 800x480 export with `text` and `metric_card` widgets. Saving replaces the layout's `data.entities` and `items` while preserving existing frame styling and other layout fields. Plugin exports omit hidden nodes and the generated guide label, preserve user-edited bound labels, and reject or skip transforms the YAML schema cannot represent.
 
 Tests share a vitest setup (`tests/setup.ts`) that redirects `LAYOUT_PATH` to a temp dir so `settings.json` bootstrap-on-first-read never pollutes the repo root. New tests that touch settings/env should follow the same pattern (pass explicit settings paths or set `LAYOUT_PATH` to a temp dir).
 

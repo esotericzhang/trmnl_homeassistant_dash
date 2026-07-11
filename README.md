@@ -110,7 +110,7 @@ The layout schema is intentionally small:
 - `data.entities`: a map of local source keys to Home Assistant entity IDs, for example `kitchenTemperature: sensor.kitchen_temperature`.
 - `items`: positioned rendering blocks. Supported item types are `text`, `metric`, `forecast`, and `line`.
 
-`text` and `metric` items can interpolate entity source keys with `{{ key }}`. For example, a metric card uses `value: "{{ kitchenTemperature }}"` and the renderer looks up `data.entities.kitchenTemperature`, fetches that entity through Home Assistant, and draws the current state. `/screen.svg`, `/screen.png`, `/render`, and `/preview` all use the same renderer in `trmnl-ha-layout/src/render.ts`. `/screen.*?sample=1` and `/render?sample=1` use sample data instead of live Home Assistant data.
+`text` and `metric` items can interpolate entity source keys with `{{ key }}`. For example, a metric card uses `value: "{{ kitchenTemperature }}"` and the renderer looks up `data.entities.kitchenTemperature`, fetches that entity through Home Assistant, and draws the current state. Text items wrap at approximate character boundaries and are clipped to their configured width and height. `/screen.svg`, `/screen.png`, `/render`, and `/preview` all use the same renderer in `trmnl-ha-layout/src/render.ts`. `/screen.*?sample=1` and `/render?sample=1` use sample data instead of live Home Assistant data.
 
 The Figma workflow exports into this existing schema. It does not introduce a second layout format: Figma text becomes bounded, wrapping `text` items, Figma cards become `metric` items, and bound Home Assistant entity IDs become `data.entities` entries. Sanitized entity units are preserved in exported value templates.
 
@@ -150,8 +150,8 @@ The manifest allows local development URLs `http://localhost:10000` and `http://
 6. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
 7. Use **Insert Card** for a simple grayscale metric card with label and large value.
 8. Move and resize the Figma nodes inside the 800x480 frame.
-9. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update bound text/card values where possible.
-10. Click **Export Selected Frame**. The plugin traverses supported nodes, converts them to the dashboard layout schema, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
+9. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update bound text/card values where possible. User-edited text and card labels are preserved while bound values refresh.
+10. Click **Export Selected Frame**. The plugin traverses visible supported nodes, skips its guide label, converts them to the dashboard layout schema, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
 11. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, `items`) into the existing YAML config.
 12. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
@@ -161,7 +161,8 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 
 - The plugin talks only to this dashboard bridge. It is not intended to store Home Assistant credentials, and `/api/figma/entities` never returns tokens or sensitive settings.
 - Figma plugin network access and CORS can block LAN hosts unless the exact origin is listed in `manifest.json` before import.
-- Only common text nodes and plugin-created metric card frames export cleanly. Unsupported node types are ignored or produce warnings.
+- Only visible text nodes and plugin-created metric card frames export cleanly. Hidden content and the generated guide label are omitted; unsupported bound nodes produce warnings.
+- Rotated, skewed, scaled, or flipped frames/nodes cannot be represented by the YAML schema and are rejected or skipped during export.
 - The TRMNL screen is black/white/grayscale e-ink; avoid color-dependent designs and tiny typography.
 - Figma plugins do not run in the background. Use **Refresh Selected** after changing Home Assistant state or reloading entities.
 - Preview embedding can be unreliable across local network/CORS boundaries; the plugin opens `{backendUrl}/preview` instead of depending on an embedded image.
@@ -178,7 +179,8 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - Insert text and card elements for an entity.
 - Move and resize inserted elements inside the frame.
 - Refresh selected bound elements after reloading entities.
-- Export the selected frame and review warnings.
+- Edit a bound text or card label, refresh it, and verify the custom label remains unchanged.
+- Export the selected frame and review warnings; verify the generated guide label and hidden nodes are absent.
 - Save to dashboard.
 - Open `/preview`, `/screen.png`, and `/screen.svg` and verify the saved layout renders.
 
@@ -215,7 +217,7 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
 - `GET /api/figma/entities`: returns sanitized entity metadata for the local Figma plugin. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured and does not expose Home Assistant credentials.
 - `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
-- `PUT /api/figma/layout`: validates a Figma-exported 800x480 layout and saves it into the existing YAML layout schema.
+- `PUT /api/figma/layout`: accepts `{ width: 800, height: 480, widgets }`, validates supported `text` and `metric_card` widgets and their in-frame geometry, then replaces `data.entities` and `items` in the existing YAML layout while preserving the other layout settings.
 - `GET /api/settings`: returns GUI settings with tokens masked.
 - `PUT /api/settings`: validates and saves GUI settings, preserving already-masked stored tokens.
 - `POST /api/terminus/login`: exchanges a Terminus API URL, login, and password for stored JWT tokens.
