@@ -10,6 +10,7 @@ export type FigmaEntity = {
 export type ExportedWidget = {
   type: 'text' | 'metric_card'
   entity?: string
+  unit?: string | null
   label?: string
   x: number
   y: number

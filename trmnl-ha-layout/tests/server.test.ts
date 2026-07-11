@@ -403,7 +403,7 @@ describe('figma bridge routes', () => {
         height: 480,
         widgets: [
           { type: 'text', staticText: 'Kitchen', x: 20, y: 18, width: 220, height: 32, fontSize: 26, align: 'left' },
-          { type: 'metric_card', entity: 'sensor.kitchen_temperature', label: 'Kitchen Temp', x: 24, y: 70, width: 210, height: 92, fontSize: 34 }
+          { type: 'metric_card', entity: 'sensor.kitchen_temperature', unit: '°F', label: 'Kitchen Temp', x: 24, y: 70, width: 210, height: 92, fontSize: 34 }
         ]
       })
     })
@@ -412,7 +412,7 @@ describe('figma bridge routes', () => {
     expect(body.frame.width).toBe(800)
     expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
     expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', x: 20, y: 18, width: 220, height: 32 })
-    expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}' })
+    expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}°F' })
   })
 
   it('PUT /api/figma/layout rejects widgets outside the frame', async () => {

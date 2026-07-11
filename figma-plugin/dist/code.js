@@ -143,6 +143,7 @@ async function refreshSelected(entities) {
             if (!entity)
                 continue;
             if (bound.type === 'TEXT') {
+                bound.setPluginData('unit', entity.unit ?? '');
                 if (binding.binding_type === 'metric_value')
                     bound.characters = entityValue(entity);
                 else if (binding.binding_type === 'metric_label')
@@ -165,8 +166,8 @@ function exportSelectedFrame() {
     const frame = selectedExportFrame();
     const warnings = [];
     const widgets = [];
-    traverse(frame, (node) => {
-        if (node === frame || !('visible' in node) || !node.visible)
+    traverseVisible(frame, (node) => {
+        if (node === frame)
             return;
         if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true')
             return;
@@ -219,12 +220,13 @@ function exportNode(node, frame, warnings) {
         return null;
     }
     if (binding?.widget_type === 'metric_card') {
-        return { type: 'metric_card', entity: binding.entity_id, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 };
+        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 };
     }
     if (node.type === 'TEXT') {
         return {
             type: 'text',
             entity: binding?.entity_id,
+            unit: binding?.unit,
             label: binding ? textLabel(node, binding.entity_id) : undefined,
             staticText: binding ? undefined : node.characters,
             fontSize: typeof node.fontSize === 'number' ? node.fontSize : undefined,
@@ -242,6 +244,14 @@ function traverse(node, visit) {
     if ('children' in node)
         for (const child of node.children)
             traverse(child, visit);
+}
+function traverseVisible(node, visit) {
+    if ('visible' in node && !node.visible)
+        return;
+    visit(node);
+    if ('children' in node)
+        for (const child of node.children)
+            traverseVisible(child, visit);
 }
 function boundNodes(node) {
     const nodes = [];
@@ -265,6 +275,7 @@ function setBinding(node, entity, bindingType) {
     node.setPluginData('entity_id', entity.entity_id);
     node.setPluginData('binding_type', bindingType);
     node.setPluginData('widget_type', bindingType);
+    node.setPluginData('unit', entity.unit ?? '');
 }
 function setBoundTextMetadata(node, label, value) {
     node.setPluginData('bound_text_label', label);
@@ -279,7 +290,8 @@ function readBinding(node) {
     return {
         entity_id: entityId,
         binding_type: node.getPluginData('binding_type'),
-        widget_type: node.getPluginData('widget_type')
+        widget_type: node.getPluginData('widget_type'),
+        unit: node.getPluginData('unit') || null
     };
 }
 function cardLabel(node, fallback) {

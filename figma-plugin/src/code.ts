@@ -10,6 +10,7 @@ type FigmaEntity = {
 type ExportedWidget = {
   type: 'text' | 'metric_card'
   entity?: string
+  unit?: string | null
   label?: string
   x: number
   y: number
@@ -193,6 +194,7 @@ async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
       const entity = byId.get(binding.entity_id)
       if (!entity) continue
       if (bound.type === 'TEXT') {
+        bound.setPluginData('unit', entity.unit ?? '')
         if (binding.binding_type === 'metric_value') bound.characters = entityValue(entity)
         else if (binding.binding_type === 'metric_label') continue
         else if (binding.binding_type === 'text') {
@@ -212,8 +214,8 @@ function exportSelectedFrame(): void {
   const frame = selectedExportFrame()
   const warnings: string[] = []
   const widgets: ExportedWidget[] = []
-  traverse(frame, (node) => {
-    if (node === frame || !('visible' in node) || !node.visible) return
+  traverseVisible(frame, (node) => {
+    if (node === frame) return
     if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true') return
     const widget = exportNode(node, frame, warnings)
     if (widget) widgets.push(widget)
@@ -260,12 +262,13 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
     return null
   }
   if (binding?.widget_type === 'metric_card') {
-    return { type: 'metric_card', entity: binding.entity_id, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 }
+    return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 }
   }
   if (node.type === 'TEXT') {
     return {
       type: 'text',
       entity: binding?.entity_id,
+      unit: binding?.unit,
       label: binding ? textLabel(node, binding.entity_id) : undefined,
       staticText: binding ? undefined : node.characters,
       fontSize: typeof node.fontSize === 'number' ? node.fontSize : undefined,
@@ -281,6 +284,12 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
 function traverse(node: SceneNode, visit: (node: SceneNode) => void): void {
   visit(node)
   if ('children' in node) for (const child of node.children) traverse(child, visit)
+}
+
+function traverseVisible(node: SceneNode, visit: (node: SceneNode) => void): void {
+  if ('visible' in node && !node.visible) return
+  visit(node)
+  if ('children' in node) for (const child of node.children) traverseVisible(child, visit)
 }
 
 function boundNodes(node: SceneNode): BoundNode[] {
@@ -305,6 +314,7 @@ function setBinding(node: PluginDataMixin, entity: FigmaEntity, bindingType: str
   node.setPluginData('entity_id', entity.entity_id)
   node.setPluginData('binding_type', bindingType)
   node.setPluginData('widget_type', bindingType)
+  node.setPluginData('unit', entity.unit ?? '')
 }
 
 function setBoundTextMetadata(node: PluginDataMixin, label: string, value: string): void {
@@ -312,14 +322,15 @@ function setBoundTextMetadata(node: PluginDataMixin, label: string, value: strin
   node.setPluginData('bound_text_value', value)
 }
 
-function readBinding(node: BaseNode): { entity_id: string; binding_type: string; widget_type: string } | null {
+function readBinding(node: BaseNode): { entity_id: string; binding_type: string; widget_type: string; unit: string | null } | null {
   if (!('getPluginData' in node)) return null
   const entityId = node.getPluginData('entity_id')
   if (!entityId) return null
   return {
     entity_id: entityId,
     binding_type: node.getPluginData('binding_type'),
-    widget_type: node.getPluginData('widget_type')
+    widget_type: node.getPluginData('widget_type'),
+    unit: node.getPluginData('unit') || null
   }
 }
 

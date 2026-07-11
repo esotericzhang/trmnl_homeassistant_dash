@@ -339,6 +339,7 @@ interface FigmaEntity {
 interface FigmaWidget {
   type: 'text' | 'metric_card'
   entity?: string
+  unit?: string | null
   label?: string
   x: number
   y: number
@@ -411,6 +412,9 @@ function validateFigmaWidget(widget: unknown, index: number): void {
   if (item.entity !== undefined && (typeof item.entity !== 'string' || !item.entity.includes('.'))) {
     throw new FigmaLayoutError(`widget ${index} has malformed entity id`)
   }
+  if (item.unit !== undefined && item.unit !== null && typeof item.unit !== 'string') {
+    throw new FigmaLayoutError(`widget ${index} has invalid unit`)
+  }
   if (item.type === 'metric_card' && !item.entity) throw new FigmaLayoutError(`widget ${index} metric_card requires entity`)
   if (item.fontSize !== undefined && (!Number.isFinite(item.fontSize) || item.fontSize <= 0)) {
     throw new FigmaLayoutError(`widget ${index} has invalid fontSize`)
@@ -438,13 +442,13 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
       ...base,
       type: 'metric',
       label: widget.label || widget.entity || 'Metric',
-      value: source ? `{{ ${source} }}` : ''
+      value: source ? `{{ ${source} }}${widget.unit ?? ''}` : ''
     }
   }
   return {
     ...base,
     type: 'text',
-    text: source ? `${widget.label || widget.entity}: {{ ${source} }}` : (widget.staticText || widget.label || 'Text')
+    text: source ? `${widget.label || widget.entity}: {{ ${source} }}${widget.unit ?? ''}` : (widget.staticText || widget.label || 'Text')
   }
 }
 

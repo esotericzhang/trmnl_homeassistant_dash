@@ -133,8 +133,22 @@ describe('renderer', () => {
       }]
     }
     const svg = renderSvg(config, { values: { value: '<ok>' }, states: {} })
-    expect(svg).toContain('&lt;/text&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;ok&gt;')
+    expect(svg).toContain('&lt;/text&gt;&lt;scr')
     expect(svg).not.toContain('</text><script>')
+  })
+
+  it('wraps and clips text within its exported bounds', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'bounded-text', type: 'text', x: 10, y: 20, width: 70, height: 40, fontSize: 16, text: 'First line wraps here\nSecond line' }]
+    }
+    const svg = renderSvg(config, { values: {}, states: {} })
+    expect(svg).toContain('<clipPath id="clip-bounded-text"><rect x="10" y="20" width="70" height="40" /></clipPath>')
+    expect(svg).toContain('clip-path="url(#clip-bounded-text)"')
+    expect(svg).toContain('y="20"')
+    expect(svg).toContain('y="40"')
+    expect(svg).not.toContain('Second line')
   })
 
   it('escapes masked HA token placeholders in editor settings UI', () => {

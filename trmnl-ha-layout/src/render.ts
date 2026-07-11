@@ -536,7 +536,12 @@ function textX(item: LayoutItem): number {
 }
 
 function renderText(item: TextItem, data: RenderData): string {
-  return `<text x="${textX(item)}" y="${item.y}" width="${item.width}" height="${item.height}" font-size="${item.fontSize ?? 18}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${interpolate(item.text, data.values)}</text>`
+  const fontSize = item.fontSize ?? 18
+  const lineHeight = Math.ceil(fontSize * 1.2)
+  const lines = wrapText(interpolate(item.text, data.values), item.width, fontSize).slice(0, Math.max(Math.floor(item.height / lineHeight), 1))
+  const clipId = `clip-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${line}</text>`).join('')
+  return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" /></clipPath></defs><g clip-path="url(#${clipId})">${text}</g>`
 }
 
 function renderMetric(item: MetricItem, data: RenderData): string {
@@ -599,4 +604,21 @@ function truncateText(text: string, maxWidth: number, fontSize: number): string 
   if (text.length <= maxCharacters) return text
   if (maxCharacters <= 1) return ''
   return `${text.slice(0, maxCharacters - 1)}…`
+}
+
+function wrapText(text: string, maxWidth: number, fontSize: number): string[] {
+  const maxCharacters = Math.max(Math.floor(maxWidth / (fontSize * 0.55)), 1)
+  return text.split('\n').flatMap((paragraph) => {
+    if (!paragraph) return ['']
+    const lines: string[] = []
+    let remaining = paragraph
+    while (remaining.length > maxCharacters) {
+      const breakAt = remaining.lastIndexOf(' ', maxCharacters)
+      const length = breakAt > 0 ? breakAt : maxCharacters
+      lines.push(remaining.slice(0, length))
+      remaining = remaining.slice(length).trimStart()
+    }
+    lines.push(remaining)
+    return lines
+  })
 }

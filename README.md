@@ -112,7 +112,7 @@ The layout schema is intentionally small:
 
 `text` and `metric` items can interpolate entity source keys with `{{ key }}`. For example, a metric card uses `value: "{{ kitchenTemperature }}"` and the renderer looks up `data.entities.kitchenTemperature`, fetches that entity through Home Assistant, and draws the current state. `/screen.svg`, `/screen.png`, `/render`, and `/preview` all use the same renderer in `trmnl-ha-layout/src/render.ts`. `/screen.*?sample=1` and `/render?sample=1` use sample data instead of live Home Assistant data.
 
-The Figma workflow exports into this existing schema. It does not introduce a second layout format: Figma text becomes `text` items, Figma cards become `metric` items, and bound Home Assistant entity IDs become `data.entities` entries.
+The Figma workflow exports into this existing schema. It does not introduce a second layout format: Figma text becomes bounded, wrapping `text` items, Figma cards become `metric` items, and bound Home Assistant entity IDs become `data.entities` entries. Sanitized entity units are preserved in exported value templates.
 
 ## Figma Plugin Workflow
 
