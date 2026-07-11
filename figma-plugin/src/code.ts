@@ -119,7 +119,7 @@ async function createTrmnlFrame(): Promise<void> {
 }
 
 async function insertText(entity: FigmaEntity): Promise<void> {
-  const parent = selectedFrameOrPage()
+  const parent = selectedTrmnlFrame()
   await loadInter('Regular')
   const node = figma.createText()
   node.name = `ha:${entity.entity_id}`
@@ -139,7 +139,7 @@ async function insertText(entity: FigmaEntity): Promise<void> {
 }
 
 async function insertCard(entity: FigmaEntity): Promise<void> {
-  const parent = selectedFrameOrPage()
+  const parent = selectedTrmnlFrame()
   await Promise.all([loadInter('Regular'), loadInter('Bold')])
   const card = figma.createFrame()
   card.name = `ha-card:${entity.entity_id}`
@@ -193,8 +193,8 @@ async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
       if (!binding) continue
       const entity = byId.get(binding.entity_id)
       if (!entity) continue
+      bound.setPluginData('unit', entity.unit ?? '')
       if (bound.type === 'TEXT') {
-        bound.setPluginData('unit', entity.unit ?? '')
         if (binding.binding_type === 'metric_value') bound.characters = entityValue(entity)
         else if (binding.binding_type === 'metric_label') continue
         else if (binding.binding_type === 'text') {
@@ -223,11 +223,13 @@ function exportSelectedFrame(): void {
   post({ type: 'export-result', layout: { width: 800, height: 480, widgets }, warnings })
 }
 
-function selectedFrameOrPage(): ChildrenMixin {
+function selectedTrmnlFrame(): FrameNode {
   const selected = figma.currentPage.selection[0]
-  if (selected?.type === 'FRAME') return selected
-  if (selected) return containingFrame(selected) ?? figma.currentPage
-  return figma.currentPage
+  if (!selected) throw new Error('Select an 800x480 TRMNL frame or a node inside one before inserting.')
+  if (selected.type === 'FRAME' && isTrmnlFrame(selected)) return selected
+  const frame = containingFrame(selected)
+  if (frame) return frame
+  throw new Error('Selected content must be inside an 800x480 TRMNL frame.')
 }
 
 function selectedExportFrame(): FrameNode {
@@ -236,14 +238,18 @@ function selectedExportFrame(): FrameNode {
   const selected = selection[0]
   const frame = selected.type === 'FRAME' ? selected : containingFrame(selected)
   if (!frame) throw new Error('Selected content must be inside a frame.')
-  if (Math.round(frame.width) !== 800 || Math.round(frame.height) !== 480) throw new Error('Export frame must be 800x480.')
+  if (!isTrmnlFrame(frame)) throw new Error('Export frame must be 800x480.')
   return frame
+}
+
+function isTrmnlFrame(node: FrameNode): boolean {
+  return Math.round(node.width) === 800 && Math.round(node.height) === 480
 }
 
 function containingFrame(node: BaseNode): FrameNode | null {
   let parent = node.parent
   while (parent) {
-    if (parent.type === 'FRAME' && Math.round(parent.width) === 800 && Math.round(parent.height) === 480) return parent
+    if (parent.type === 'FRAME' && isTrmnlFrame(parent)) return parent
     parent = parent.parent
   }
   return null
