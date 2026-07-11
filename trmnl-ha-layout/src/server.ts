@@ -147,6 +147,7 @@ app.put('/api/figma/layout', (req, res, next) => {
 })
 
 app.post('/api/figma/preview-layout', (req, res, next) => {
+  if (!requireConfiguredTokenAuth(req, res)) return
   try {
     const existing = loadLayoutConfig()
     const layout = figmaLayoutToConfig(req.body, existing)
@@ -467,6 +468,8 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
 }
 
 function uniqueSourceKey(entityId: string, entities: Record<string, string>): string {
+  const existing = Object.entries(entities).find(([, existingEntityId]) => existingEntityId === entityId)
+  if (existing) return existing[0]
   const base = camelKey(entityId.replace(/^[^.]+\./, '')) || 'entity'
   let key = base
   let index = 2

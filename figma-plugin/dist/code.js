@@ -166,6 +166,8 @@ function exportSelectedFrame() {
     const frame = selectedExportFrame();
     const warnings = [];
     const widgets = [];
+    if (hasUnrepresentableTransform(frame))
+        throw new Error('Export frame cannot be rotated, skewed, scaled, or flipped.');
     traverseVisible(frame, (node) => {
         if (node === frame)
             return;
@@ -216,6 +218,10 @@ function exportNode(node, frame, warnings) {
     const binding = readBinding(node);
     if (binding?.widget_type === 'metric_label' || binding?.widget_type === 'metric_value')
         return null;
+    if (hasUnrepresentableTransformToFrame(node, frame)) {
+        warnings.push(`${node.name}: skipped because rotated, skewed, scaled, or flipped content cannot be exported.`);
+        return null;
+    }
     const bounds = relativeBounds(node, frame);
     if (!bounds) {
         warnings.push(`${node.name}: skipped because bounds could not be read.`);
@@ -276,6 +282,20 @@ function relativeBounds(node, frame) {
         width: Math.round(absolute.width),
         height: Math.round(absolute.height)
     };
+}
+function hasUnrepresentableTransformToFrame(node, frame) {
+    let current = node;
+    while (current && current !== frame) {
+        if ('relativeTransform' in current && hasUnrepresentableTransform(current))
+            return true;
+        current = current.parent;
+    }
+    return current !== frame;
+}
+function hasUnrepresentableTransform(node) {
+    const [[scaleX, skewX], [skewY, scaleY]] = node.relativeTransform;
+    const epsilon = 0.0001;
+    return Math.abs(scaleX - 1) > epsilon || Math.abs(scaleY - 1) > epsilon || Math.abs(skewX) > epsilon || Math.abs(skewY) > epsilon;
 }
 function setBinding(node, entity, bindingType) {
     node.setPluginData('entity_id', entity.entity_id);

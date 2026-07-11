@@ -214,7 +214,7 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
 - `GET /api/figma/entities`: returns sanitized entity metadata for the local Figma plugin. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured and does not expose Home Assistant credentials.
-- `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use.
+- `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
 - `PUT /api/figma/layout`: validates a Figma-exported 800x480 layout and saves it into the existing YAML layout schema.
 - `GET /api/settings`: returns GUI settings with tokens masked.
 - `PUT /api/settings`: validates and saves GUI settings, preserving already-masked stored tokens.
@@ -222,4 +222,4 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-Protected endpoints (`GET /api/figma/entities`, `PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+Protected endpoints (`GET /api/figma/entities`, `POST /api/figma/preview-layout`, `PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.

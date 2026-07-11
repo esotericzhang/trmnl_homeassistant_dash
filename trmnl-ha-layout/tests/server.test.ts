@@ -394,6 +394,25 @@ describe('figma bridge routes', () => {
     expect(authorized.headers.get('access-control-allow-origin')).toBe('*')
   })
 
+  it('POST /api/figma/preview-layout requires auth when settings token is configured', async () => {
+    const existing = loadSettings()
+    saveSettings({ ...existing, haToken: '', settingsToken: 'guard-token' })
+    const request = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [] })
+    }
+
+    const unauthorized = await fetch(`${baseUrl}/api/figma/preview-layout`, request)
+    expect(unauthorized.status).toBe(401)
+
+    const authorized = await fetch(`${baseUrl}/api/figma/preview-layout`, {
+      ...request,
+      headers: { ...request.headers, Authorization: 'Bearer guard-token' }
+    })
+    expect(authorized.ok).toBe(true)
+  })
+
   it('PUT /api/figma/layout maps widgets into the existing layout schema', async () => {
     const res = await fetch(`${baseUrl}/api/figma/layout`, {
       method: 'PUT',
@@ -413,6 +432,27 @@ describe('figma bridge routes', () => {
     expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
     expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', x: 20, y: 18, width: 220, height: 32 })
     expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}°F' })
+  })
+
+  it('PUT /api/figma/layout reuses sources for repeated entity bindings', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        width: 800,
+        height: 480,
+        widgets: [
+          { type: 'text', entity: 'sensor.kitchen_temperature', x: 20, y: 20, width: 220, height: 32 },
+          { type: 'metric_card', entity: 'sensor.kitchen_temperature', x: 20, y: 70, width: 220, height: 92 }
+        ]
+      })
+    })
+
+    expect(res.ok).toBe(true)
+    const body = await res.json()
+    expect(body.data.entities).toEqual({ kitchenTemperature: 'sensor.kitchen_temperature' })
+    expect(body.items[0].text).toContain('{{ kitchenTemperature }}')
+    expect(body.items[1].value).toBe('{{ kitchenTemperature }}')
   })
 
   it('PUT /api/figma/layout rejects widgets outside the frame', async () => {
