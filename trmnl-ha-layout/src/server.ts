@@ -392,21 +392,29 @@ function validateFigmaLayout(body: unknown): FigmaLayout {
   const layout = body as Partial<FigmaLayout>
   if (layout.width !== 800 || layout.height !== 480) throw new FigmaLayoutError('layout width and height must be 800x480')
   if (!Array.isArray(layout.widgets)) throw new FigmaLayoutError('layout.widgets must be an array')
-  layout.widgets.forEach(validateFigmaWidget)
-  return layout as FigmaLayout
+  const widgets = layout.widgets.map(normalizeFigmaWidget)
+  return { width: 800, height: 480, widgets }
 }
 
-function validateFigmaWidget(widget: unknown, index: number): void {
+function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
   if (!widget || typeof widget !== 'object') throw new FigmaLayoutError(`widget ${index} must be an object`)
   const item = widget as Partial<FigmaWidget>
   if (item.type !== 'text' && item.type !== 'metric_card') throw new FigmaLayoutError(`widget ${index} has unsupported type`)
   for (const key of ['x', 'y', 'width', 'height'] as const) {
     if (!Number.isFinite(item[key])) throw new FigmaLayoutError(`widget ${index} has invalid ${key}`)
   }
-  if ((item.x ?? 0) < 0 || (item.y ?? 0) < 0 || (item.width ?? 0) <= 0 || (item.height ?? 0) <= 0) {
+  const normalized = {
+    ...item,
+    x: Math.round(item.x!),
+    y: Math.round(item.y!),
+    width: Math.round(item.width!),
+    height: Math.round(item.height!),
+    fontSize: item.fontSize === undefined ? undefined : Math.round(item.fontSize)
+  } as FigmaWidget
+  if (normalized.x < 0 || normalized.y < 0 || normalized.width <= 0 || normalized.height <= 0) {
     throw new FigmaLayoutError(`widget ${index} position and size must be positive`)
   }
-  if ((item.x ?? 0) + (item.width ?? 0) > 800 || (item.y ?? 0) + (item.height ?? 0) > 480) {
+  if (normalized.x + normalized.width > 800 || normalized.y + normalized.height > 480) {
     throw new FigmaLayoutError(`widget ${index} is outside the 800x480 frame`)
   }
   if (item.entity !== undefined && (typeof item.entity !== 'string' || !item.entity.includes('.'))) {
@@ -415,6 +423,11 @@ function validateFigmaWidget(widget: unknown, index: number): void {
   if (item.unit !== undefined && item.unit !== null && typeof item.unit !== 'string') {
     throw new FigmaLayoutError(`widget ${index} has invalid unit`)
   }
+  if (item.label !== undefined && typeof item.label !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid label`)
+  if (item.staticText !== undefined && typeof item.staticText !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid staticText`)
+  if (item.weight !== undefined && typeof item.weight !== 'string' && !Number.isFinite(item.weight)) {
+    throw new FigmaLayoutError(`widget ${index} has invalid weight`)
+  }
   if (item.type === 'metric_card' && !item.entity) throw new FigmaLayoutError(`widget ${index} metric_card requires entity`)
   if (item.fontSize !== undefined && (!Number.isFinite(item.fontSize) || item.fontSize <= 0)) {
     throw new FigmaLayoutError(`widget ${index} has invalid fontSize`)
@@ -422,6 +435,7 @@ function validateFigmaWidget(widget: unknown, index: number): void {
   if (item.align !== undefined && !['left', 'center', 'right'].includes(item.align)) {
     throw new FigmaLayoutError(`widget ${index} has invalid align`)
   }
+  return normalized
 }
 
 function widgetToItem(widget: FigmaWidget, index: number, entities: Record<string, string>): LayoutItem {
@@ -429,11 +443,11 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   if (source && widget.entity) entities[source] = widget.entity
   const base = {
     id: uniqueItemId(widget.label || widget.entity || widget.staticText || widget.type, index),
-    x: Math.round(widget.x),
-    y: Math.round(widget.y),
-    width: Math.round(widget.width),
-    height: Math.round(widget.height),
-    fontSize: widget.fontSize ? Math.round(widget.fontSize) : undefined,
+    x: widget.x,
+    y: widget.y,
+    width: widget.width,
+    height: widget.height,
+    fontSize: widget.fontSize,
     align: widget.align,
     weight: widget.weight
   }

@@ -5,6 +5,21 @@ import { renderEditorHtml, renderSvg } from '../src/render.js'
 import type { LayoutConfig, RenderData } from '../src/types.js'
 
 describe('renderer', () => {
+  it('positions bounded text from the top edge and escapes wrapped lines', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { message: 'sensor.message' } },
+      items: [{ id: 'bounded', type: 'text', x: 20, y: 30, width: 70, height: 48, fontSize: 20, text: '{{ message }}' }]
+    }
+    const data: RenderData = { values: { message: 'A & B' }, states: {} }
+
+    const svg = renderSvg(config, data)
+
+    expect(svg).toContain('<text x="20" y="30"')
+    expect(svg).toContain('A &amp; B')
+    expect(svg).not.toContain('A &amp;amp; B')
+  })
+
   it('renders an SVG with sleep and forecast content', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const svg = renderSvg(config, sampleRenderData(config))
@@ -146,8 +161,9 @@ describe('renderer', () => {
     const svg = renderSvg(config, { values: {}, states: {} })
     expect(svg).toContain('<clipPath id="clip-bounded-text"><rect x="10" y="20" width="70" height="40" /></clipPath>')
     expect(svg).toContain('clip-path="url(#clip-bounded-text)"')
+    expect(svg).toContain('y="20"')
     expect(svg).toContain('y="40"')
-    expect(svg).toContain('y="60"')
+    expect(svg).not.toContain('y="60"')
     expect(svg).not.toContain('Second line')
   })
 

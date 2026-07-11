@@ -540,7 +540,7 @@ function renderText(item: TextItem, data: RenderData): string {
   const lineHeight = Math.ceil(fontSize * 1.2)
   const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize).slice(0, Math.max(Math.floor(item.height / lineHeight), 1))
   const clipId = `clip-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
-  const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + (index + 1) * lineHeight}" font-size="${fontSize}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
+  const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
   return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" /></clipPath></defs><g clip-path="url(#${clipId})">${text}</g>`
 }
 

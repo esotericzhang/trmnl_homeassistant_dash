@@ -425,4 +425,30 @@ describe('figma bridge routes', () => {
     const body = await res.json() as { message: string }
     expect(body.message).toContain('outside the 800x480 frame')
   })
+
+  it('PUT /api/figma/layout validates normalized geometry', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', staticText: 'Tiny', x: 799.6, y: 10, width: 0.4, height: 20 }] })
+    })
+
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toContain('position and size must be positive')
+  })
+
+  it.each([
+    ['label', { label: { invalid: true } }],
+    ['staticText', { staticText: 42 }],
+    ['weight', { weight: { invalid: true } }]
+  ])('PUT /api/figma/layout rejects invalid %s fields', async (_field, invalid) => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', x: 10, y: 10, width: 100, height: 30, ...invalid }] })
+    })
+
+    expect(res.status).toBe(400)
+  })
 })

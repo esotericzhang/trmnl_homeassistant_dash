@@ -75,7 +75,9 @@
     $('create-frame').onclick = () => send({ type:'create-frame' });
     $('load-entities').onclick = () => loadEntities().catch(e => status('Load failed: '+e.message));
     $('search').oninput = renderEntities;
-    $('refresh-selected').onclick = async () => { if (!entities.length) await loadEntities(); send({ type:'refresh-selected', entities }); };
+    $('refresh-selected').onclick = () => loadEntities()
+      .then(() => send({ type:'refresh-selected', entities }))
+      .catch(e => status('Refresh failed: '+e.message));
     $('export-selected').onclick = () => send({ type:'export-selected' });
     $('save-dashboard').onclick = () => saveDashboard().catch(e => status('Save failed: '+e.message));
     $('open-preview').onclick = () => window.open(backend() + '/preview', '_blank');
