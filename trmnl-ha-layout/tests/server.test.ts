@@ -481,7 +481,10 @@ describe('figma bridge routes', () => {
   it.each([
     ['label', { label: { invalid: true } }],
     ['staticText', { staticText: 42 }],
-    ['weight', { weight: { invalid: true } }]
+    ['weight object', { weight: { invalid: true } }],
+    ['weight injection', { weight: '" onload="alert(1)' }],
+    ['weight out of range', { weight: 1001 }],
+    ['rounded fontSize', { fontSize: 0.4 }]
   ])('PUT /api/figma/layout rejects invalid %s fields', async (_field, invalid) => {
     const res = await fetch(`${baseUrl}/api/figma/layout`, {
       method: 'PUT',

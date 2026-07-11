@@ -78,7 +78,13 @@
     $('refresh-selected').onclick = () => loadEntities()
       .then(() => send({ type:'refresh-selected', entities }))
       .catch(e => status('Refresh failed: '+e.message));
-    $('export-selected').onclick = () => send({ type:'export-selected' });
+    $('export-selected').onclick = () => {
+      exportedLayout = null;
+      $('save-dashboard').disabled = true;
+      $('export-output').textContent = '';
+      status('Exporting selected frame...');
+      send({ type:'export-selected' });
+    };
     $('save-dashboard').onclick = () => saveDashboard().catch(e => status('Save failed: '+e.message));
     $('open-preview').onclick = () => window.open(backend() + '/preview', '_blank');
     onmessage = event => {
@@ -87,7 +93,11 @@
       if (msg.type === 'stored-backend-url') $('backend-url').value = msg.url || 'http://localhost:10000';
       if (msg.type === 'stored-dashboard-token') $('dashboard-token').value = msg.token || '';
       if (msg.type === 'status') status(msg.message);
-      if (msg.type === 'error') status('Error: '+msg.message);
+      if (msg.type === 'error') {
+        exportedLayout = null;
+        $('save-dashboard').disabled = true;
+        status('Error: '+msg.message);
+      }
       if (msg.type === 'export-result') {
         exportedLayout = msg.layout;
         $('export-output').textContent = JSON.stringify(msg.layout, null, 2) + (msg.warnings.length ? '\n\nWarnings:\n- ' + msg.warnings.join('\n- ') : '');

@@ -166,8 +166,8 @@ function exportSelectedFrame() {
     const frame = selectedExportFrame();
     const warnings = [];
     const widgets = [];
-    if (hasUnrepresentableTransform(frame))
-        throw new Error('Export frame cannot be rotated, skewed, scaled, or flipped.');
+    if (hasUnrepresentableTransformInAncestorChain(frame))
+        throw new Error('Export frame or one of its ancestors cannot be rotated, skewed, scaled, or flipped.');
     traverseVisible(frame, (node) => {
         if (node === frame)
             return;
@@ -292,6 +292,15 @@ function hasUnrepresentableTransformToFrame(node, frame) {
     }
     return current !== frame;
 }
+function hasUnrepresentableTransformInAncestorChain(node) {
+    let current = node;
+    while (current && current.type !== 'PAGE') {
+        if ('relativeTransform' in current && hasUnrepresentableTransform(current))
+            return true;
+        current = current.parent;
+    }
+    return false;
+}
 function hasUnrepresentableTransform(node) {
     const [[scaleX, skewX], [skewY, scaleY]] = node.relativeTransform;
     const epsilon = 0.0001;
@@ -322,7 +331,7 @@ function readBinding(node) {
 }
 function cardLabel(node, fallback) {
     if ('children' in node) {
-        const label = node.children.find(child => child.type === 'TEXT' && child.name.startsWith('ha-label:'));
+        const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
         if (label?.type === 'TEXT')
             return label.characters;
     }

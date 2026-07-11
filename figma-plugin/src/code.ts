@@ -214,7 +214,7 @@ function exportSelectedFrame(): void {
   const frame = selectedExportFrame()
   const warnings: string[] = []
   const widgets: ExportedWidget[] = []
-  if (hasUnrepresentableTransform(frame)) throw new Error('Export frame cannot be rotated, skewed, scaled, or flipped.')
+  if (hasUnrepresentableTransformInAncestorChain(frame)) throw new Error('Export frame or one of its ancestors cannot be rotated, skewed, scaled, or flipped.')
   traverseVisible(frame, (node) => {
     if (node === frame) return
     if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true') return
@@ -330,6 +330,15 @@ function hasUnrepresentableTransformToFrame(node: SceneNode, frame: FrameNode): 
   return current !== frame
 }
 
+function hasUnrepresentableTransformInAncestorChain(node: SceneNode): boolean {
+  let current: BaseNode | null = node
+  while (current && current.type !== 'PAGE') {
+    if ('relativeTransform' in current && hasUnrepresentableTransform(current)) return true
+    current = current.parent
+  }
+  return false
+}
+
 function hasUnrepresentableTransform(node: { relativeTransform: Transform }): boolean {
   const [[scaleX, skewX], [skewY, scaleY]] = node.relativeTransform
   const epsilon = 0.0001
@@ -362,7 +371,7 @@ function readBinding(node: BaseNode): { entity_id: string; binding_type: string;
 
 function cardLabel(node: SceneNode, fallback: string): string {
   if ('children' in node) {
-    const label = node.children.find(child => child.type === 'TEXT' && child.name.startsWith('ha-label:'))
+    const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label')
     if (label?.type === 'TEXT') return label.characters
   }
   return fallback

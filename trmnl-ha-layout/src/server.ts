@@ -426,17 +426,22 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
   }
   if (item.label !== undefined && typeof item.label !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid label`)
   if (item.staticText !== undefined && typeof item.staticText !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid staticText`)
-  if (item.weight !== undefined && typeof item.weight !== 'string' && !Number.isFinite(item.weight)) {
+  if (item.weight !== undefined && !isSupportedFontWeight(item.weight)) {
     throw new FigmaLayoutError(`widget ${index} has invalid weight`)
   }
   if (item.type === 'metric_card' && !item.entity) throw new FigmaLayoutError(`widget ${index} metric_card requires entity`)
-  if (item.fontSize !== undefined && (!Number.isFinite(item.fontSize) || item.fontSize <= 0)) {
+  if (normalized.fontSize !== undefined && (!Number.isFinite(normalized.fontSize) || normalized.fontSize < 1)) {
     throw new FigmaLayoutError(`widget ${index} has invalid fontSize`)
   }
   if (item.align !== undefined && !['left', 'center', 'right'].includes(item.align)) {
     throw new FigmaLayoutError(`widget ${index} has invalid align`)
   }
   return normalized
+}
+
+function isSupportedFontWeight(weight: unknown): weight is number | string {
+  if (typeof weight === 'number') return Number.isFinite(weight) && weight >= 1 && weight <= 1000
+  return typeof weight === 'string' && ['normal', 'bold', 'bolder', 'lighter'].includes(weight)
 }
 
 function widgetToItem(widget: FigmaWidget, index: number, entities: Record<string, string>): LayoutItem {

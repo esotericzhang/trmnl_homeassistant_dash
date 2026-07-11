@@ -4,7 +4,7 @@ import sharp from 'sharp'
 
 export function renderSvg(config: LayoutConfig, data: RenderData): string {
   const { frame } = config
-  const items = config.items.map((item) => renderItem(item, data, frame.foreground)).join('\n')
+  const items = config.items.map((item, index) => renderItem(item, data, frame.foreground, index)).join('\n')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}" role="img">
   <rect width="100%" height="100%" fill="${frame.background}" />
   <style>
@@ -514,9 +514,9 @@ export function renderEditorHtml(bootstrapToken = ''): string {
 </html>`
 }
 
-function renderItem(item: LayoutItem, data: RenderData, color: string): string {
+function renderItem(item: LayoutItem, data: RenderData, color: string, index: number): string {
   switch (item.type) {
-    case 'text': return renderText(item, data)
+    case 'text': return renderText(item, data, index)
     case 'metric': return renderMetric(item, data)
     case 'forecast': return renderForecast(item, data)
     case 'line': return `<line x1="${item.x}" y1="${item.y}" x2="${item.x + item.width}" y2="${item.y + item.height}" stroke="${color}" stroke-width="1" />`
@@ -535,11 +535,11 @@ function textX(item: LayoutItem): number {
   return item.x
 }
 
-function renderText(item: TextItem, data: RenderData): string {
+function renderText(item: TextItem, data: RenderData, index: number): string {
   const fontSize = item.fontSize ?? 18
   const lineHeight = Math.ceil(fontSize * 1.2)
   const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize).slice(0, Math.max(Math.floor(item.height / lineHeight), 1))
-  const clipId = `clip-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  const clipId = `clip-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
   return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" /></clipPath></defs><g clip-path="url(#${clipId})">${text}</g>`
 }
