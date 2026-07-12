@@ -35,12 +35,15 @@ export interface TextItem extends BaseItem {
   type: 'text'
   text: string
   literal?: boolean
+  prefix?: string
+  suffix?: string
 }
 
 export interface MetricItem extends BaseItem {
   type: 'metric'
   label: string
   value: string
+  suffix?: string
 }
 
 export interface ForecastItem extends BaseItem {

@@ -93,6 +93,16 @@ function validateItem(item: LayoutItem): void {
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
     throw new LayoutConfigError(`item ${item.id} has unsupported type ${item.type}`)
   }
+  if (item.type === 'text') {
+    if (item.literal !== undefined && typeof item.literal !== 'boolean') {
+      throw new LayoutConfigError(`item ${item.id} has invalid literal`)
+    }
+    if (item.prefix !== undefined && typeof item.prefix !== 'string') throw new LayoutConfigError(`item ${item.id} has invalid prefix`)
+    if (item.suffix !== undefined && typeof item.suffix !== 'string') throw new LayoutConfigError(`item ${item.id} has invalid suffix`)
+  }
+  if (item.type === 'metric' && item.suffix !== undefined && typeof item.suffix !== 'string') {
+    throw new LayoutConfigError(`item ${item.id} has invalid suffix`)
+  }
 }
 
 export function getRuntimeConfig() {

@@ -544,7 +544,7 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
   const lineHeight = Math.ceil(fontSize * 1.2)
   const maxLines = Math.max(Math.floor(item.height / lineHeight), 1)
   const weight = item.weight ?? 400
-  const value = item.literal ? item.text : interpolateRaw(item.text, data.values)
+  const value = `${item.prefix ?? ''}${item.literal ? item.text : interpolateRaw(item.text, data.values)}${item.suffix ?? ''}`
   const lines = wrapText(value, item.width, fontSize, numericFontWeight(weight), maxLines)
   const clipId = `clip-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${weight}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
@@ -556,7 +556,7 @@ function renderMetric(item: MetricItem, data: RenderData, index: number): string
   return `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="${item.width}" height="${item.height}" rx="10" /></clipPath></defs><g clip-path="url(#${clipId})" transform="translate(${item.x},${item.y})">
     <rect width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
     <text x="16" y="14" font-size="18" class="muted">${escapeXml(item.label)}</text>
-    <text x="16" y="46" font-size="${item.fontSize ?? 30}" font-weight="700">${interpolate(item.value, data.values)}</text>
+    <text x="16" y="46" font-size="${item.fontSize ?? 30}" font-weight="700">${interpolate(item.value, data.values)}${escapeXml(item.suffix ?? '')}</text>
   </g>`
 }
 

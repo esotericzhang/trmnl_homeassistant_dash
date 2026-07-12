@@ -66,4 +66,12 @@ describe('layout config', () => {
     config.items = [null as unknown as LayoutItem]
     expect(() => validateLayoutConfig(config)).toThrow('each item must be an object')
   })
+
+  it('requires text literal flags to be boolean', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const title = config.items.find(item => item.type === 'text')
+    if (!title || title.type !== 'text') throw new Error('text item missing')
+    title.literal = 'false' as unknown as boolean
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${title.id} has invalid literal`)
+  })
 })

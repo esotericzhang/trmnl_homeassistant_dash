@@ -523,6 +523,19 @@ function hasRepresentableTypography(node: TextNode, warnings: string[]): boolean
     warnings.push(`${node.name}: skipped because font family or style cannot be represented.`)
     return false
   }
+  const unsupportedLayout = typeof node.lineHeight === 'symbol'
+    || node.lineHeight.unit !== 'AUTO'
+    || typeof node.letterSpacing === 'symbol'
+    || node.letterSpacing.value !== 0
+    || node.paragraphSpacing !== 0
+    || node.paragraphIndent !== 0
+    || node.textCase !== 'ORIGINAL'
+    || node.textDecoration !== 'NONE'
+    || node.textAlignVertical !== 'TOP'
+  if (unsupportedLayout) {
+    warnings.push(`${node.name}: skipped because line height, spacing, case, decoration, or vertical alignment cannot be represented.`)
+    return false
+  }
   return true
 }
 

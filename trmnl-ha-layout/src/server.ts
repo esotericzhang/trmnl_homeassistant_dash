@@ -573,15 +573,18 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
     return {
       ...base,
       type: 'metric',
-      label: widget.label || widget.entity || 'Metric',
-      value: source ? `${placeholder}${unit}` : ''
+      label: widget.label ?? widget.entity ?? 'Metric',
+      value: source ? placeholder : '',
+      suffix: unit || undefined
     }
   }
   return {
     ...base,
     type: 'text',
-    text: source ? `${widget.label || widget.entity}: ${placeholder}${unit}` : (widget.staticText ?? widget.label ?? 'Text'),
-    literal: source ? undefined : true
+    text: source ? placeholder : (widget.staticText ?? widget.label ?? 'Text'),
+    literal: source ? undefined : true,
+    prefix: source ? `${widget.label ?? widget.entity}: ` : undefined,
+    suffix: source ? (unit || undefined) : undefined
   }
 }
 

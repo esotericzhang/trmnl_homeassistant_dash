@@ -207,6 +207,18 @@ describe('renderer', () => {
     expect(svg).not.toContain('changed')
   })
 
+  it('renders dynamic text with literal prefixes and suffixes', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'safe-affixes', type: 'text', x: 0, y: 0, width: 300, height: 40, text: '{{ value }}', prefix: '{{ label }}: ', suffix: '{{ unit }}' }]
+    }
+    const svg = renderSvg(config, { values: { value: 42, label: 'wrong', unit: 'wrong' }, states: {} })
+
+    expect(svg).toContain('{{ label }}: 42{{ unit }}')
+    expect(svg).not.toContain('wrong')
+  })
+
   it('wraps text without splitting grapheme clusters', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

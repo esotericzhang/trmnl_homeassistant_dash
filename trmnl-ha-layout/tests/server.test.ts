@@ -527,7 +527,7 @@ describe('figma bridge routes', () => {
     expect(body.frame.width).toBe(800)
     expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
     expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', literal: true, x: 20, y: 18, width: 220, height: 32 })
-    expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}°F' })
+    expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}', suffix: '°F' })
   })
 
   it('PUT /api/figma/layout preserves explicitly empty static text', async () => {
@@ -550,6 +550,26 @@ describe('figma bridge routes', () => {
 
     expect(res.ok).toBe(true)
     expect((await res.json()).items[0]).toMatchObject({ text: '{{ kitchenTemperature }}', literal: true })
+  })
+
+  it('PUT /api/figma/layout keeps bound labels and units literal', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        width: 800,
+        height: 480,
+        widgets: [
+          { type: 'text', entity: 'sensor.kitchen_temperature', label: '{{ other }}', unit: '{{ unit }}', x: 20, y: 18, width: 220, height: 32 },
+          { type: 'metric_card', entity: 'sensor.kitchen_temperature', label: '', unit: '{{ unit }}', x: 20, y: 60, width: 220, height: 92 }
+        ]
+      })
+    })
+
+    expect(res.ok).toBe(true)
+    const body = await res.json()
+    expect(body.items[0]).toMatchObject({ text: '{{ kitchenTemperature }}', prefix: '{{ other }}: ', suffix: '{{ unit }}' })
+    expect(body.items[1]).toMatchObject({ label: '', value: '{{ kitchenTemperature }}', suffix: '{{ unit }}' })
   })
 
   it('PUT /api/config returns 400 for invalid client layout data', async () => {
@@ -603,7 +623,7 @@ describe('figma bridge routes', () => {
     const body = await res.json()
     expect(body.items[0].value).toBe('{{ sleep | minutes }}')
     expect(body.items[1].value).toBe('{{ sleepWithUnit | minutes }}')
-    expect(body.items[2].text).toBe('First temp: {{ weather }}')
+    expect(body.items[2]).toMatchObject({ text: '{{ weather }}', prefix: 'First temp: ' })
     expect(body.data.selectors).toEqual({ weather: 'attributes.forecast.0.temperature' })
   })
 
