@@ -51,6 +51,7 @@ type UiMessage =
   | { type: 'export-result'; layout: ExportedLayout; warnings: string[] }
 
 type BoundNode = SceneNode & PluginDataMixin
+type Bounds = { x: number; y: number; width: number; height: number }
 
 figma.showUI(__html__, { width: 420, height: 640, themeColors: true })
 
@@ -222,12 +223,9 @@ function exportSelectedFrame(): void {
   const warnings: string[] = []
   const widgets: ExportedWidget[] = []
   if (hasUnrepresentableTransformInAncestorChain(frame)) throw new Error('Export frame or one of its ancestors cannot be rotated, skewed, scaled, or flipped.')
-  traverseVisible(frame, (node) => {
-    if (node === frame) return
-    if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true') return
-    const widget = exportNode(node, frame, warnings)
-    if (widget) widgets.push(widget)
-  })
+  const frameBounds = frame.absoluteBoundingBox
+  if (!frameBounds) throw new Error('Export frame bounds could not be read.')
+  for (const child of frame.children) exportTree(child, frame, frameBounds, widgets, warnings)
   post({ type: 'export-result', layout: { width: 800, height: 480, widgets }, warnings })
 }
 
@@ -298,19 +296,69 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
       ...bounds
     }
   }
-  if (binding) warnings.push(`${node.name}: skipped bound node with unsupported export type.`)
   return null
+}
+
+function exportTree(node: SceneNode, frame: FrameNode, clip: Bounds, widgets: ExportedWidget[], warnings: string[]): number {
+  if ('visible' in node && !node.visible) return 0
+  if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true') return 0
+
+  const binding = readBinding(node)
+  if (binding?.widget_type === 'metric_label' || binding?.widget_type === 'metric_value') return 0
+
+  if (node.type === 'TEXT' || binding?.widget_type === 'metric_card') {
+    if (isClipped(node, clip)) {
+      warnings.push(`${node.name}: skipped because ancestor clipping cannot be represented.`)
+      return 0
+    }
+    const widget = exportNode(node, frame, warnings)
+    if (!widget) return 0
+    widgets.push(widget)
+    return 1
+  }
+
+  let exportedDescendants = 0
+  if ('children' in node) {
+    const childClip = 'clipsContent' in node && node.clipsContent && node.absoluteBoundingBox
+      ? intersectBounds(clip, node.absoluteBoundingBox)
+      : clip
+    if (childClip) {
+      for (const child of node.children) exportedDescendants += exportTree(child, frame, childClip, widgets, warnings)
+    }
+  }
+
+  if (exportedDescendants === 0 && isUnsupportedVisualNode(node)) {
+    warnings.push(`${node.name}: skipped visible ${node.type.toLowerCase()} because this export type is unsupported.`)
+  }
+  return exportedDescendants
+}
+
+function isClipped(node: SceneNode, clip: Bounds): boolean {
+  const bounds = node.absoluteBoundingBox
+  if (!bounds) return false
+  const epsilon = 0.001
+  return bounds.x < clip.x - epsilon
+    || bounds.y < clip.y - epsilon
+    || bounds.x + bounds.width > clip.x + clip.width + epsilon
+    || bounds.y + bounds.height > clip.y + clip.height + epsilon
+}
+
+function intersectBounds(a: Bounds, b: Bounds): Bounds | null {
+  const x = Math.max(a.x, b.x)
+  const y = Math.max(a.y, b.y)
+  const right = Math.min(a.x + a.width, b.x + b.width)
+  const bottom = Math.min(a.y + a.height, b.y + b.height)
+  return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null
+}
+
+function isUnsupportedVisualNode(node: SceneNode): boolean {
+  if (readBinding(node)) return true
+  return !('children' in node) || node.type === 'BOOLEAN_OPERATION'
 }
 
 function traverse(node: SceneNode, visit: (node: SceneNode) => void): void {
   visit(node)
   if ('children' in node) for (const child of node.children) traverse(child, visit)
-}
-
-function traverseVisible(node: SceneNode, visit: (node: SceneNode) => void): void {
-  if ('visible' in node && !node.visible) return
-  visit(node)
-  if ('children' in node) for (const child of node.children) traverseVisible(child, visit)
 }
 
 function boundNodes(node: SceneNode): BoundNode[] {
