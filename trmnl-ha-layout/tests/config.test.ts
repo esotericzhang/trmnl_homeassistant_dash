@@ -39,6 +39,9 @@ describe('layout config', () => {
     config.data.selectors = { missing: 'state' }
     expect(() => validateLayoutConfig(config)).toThrow('must reference an existing entity key')
 
+    config.data.selectors = { constructor: 'state' }
+    expect(() => validateLayoutConfig(config)).toThrow('must reference an existing entity key')
+
     config.data.selectors = { minutesAsleep: 'attributes.forecast[0].temperature' }
     expect(() => validateLayoutConfig(config)).toThrow('unsupported path')
 

@@ -280,7 +280,7 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
     return null
   }
   if (binding?.widget_type === 'metric_card') {
-    const parts = metricCardParts(node)
+    const parts = metricCardParts(node, warnings)
     if (!parts) {
       warnings.push(`${node.name}: skipped because its bound label or value is missing, hidden, transparent, or clipped.`)
       return null
@@ -288,6 +288,11 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
     return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: parts.label.characters, ...bounds, fontSize: typeof parts.value.fontSize === 'number' ? parts.value.fontSize : 30 }
   }
   if (node.type === 'TEXT') {
+    const paintVisibility = textPaintVisibility(node)
+    if (paintVisibility !== 'visible') {
+      warnings.push(`${node.name}: skipped because its text fills are ${paintVisibility === 'mixed' ? 'mixed and cannot be safely exported' : 'hidden or transparent'}.`)
+      return null
+    }
     const label = binding ? textLabel(node, binding.entity_id) : undefined
     if (label === null) {
       warnings.push(`${node.name}: skipped because its bound label and value changed; use Refresh Selected before exporting.`)
@@ -495,17 +500,27 @@ function boundTextLabelFromSuffix(current: string, value?: string): string {
   return current.slice(0, -suffix.length).trim()
 }
 
-function metricCardParts(node: SceneNode): { label: TextNode; value: TextNode } | null {
+function metricCardParts(node: SceneNode, warnings: string[]): { label: TextNode; value: TextNode } | null {
   if (!('children' in node) || !node.absoluteBoundingBox) return null
   const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label')
   const value = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value')
   if (label?.type !== 'TEXT' || value?.type !== 'TEXT') return null
+  for (const part of [label, value]) {
+    const paintVisibility = textPaintVisibility(part)
+    if (paintVisibility === 'mixed') warnings.push(`${part.name}: mixed text fills cannot be safely exported.`)
+    if (paintVisibility !== 'visible') return null
+  }
   if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox)) return null
   return { label, value }
 }
 
 function isVisibleMetricPart(node: TextNode, cardBounds: Rect): boolean {
   return node.visible && node.opacity > 0.001 && Boolean(node.absoluteBoundingBox) && !isClipped(node, cardBounds)
+}
+
+function textPaintVisibility(node: TextNode): 'visible' | 'invisible' | 'mixed' {
+  if (node.fills === figma.mixed) return 'mixed'
+  return hasVisiblePaint(node.fills) ? 'visible' : 'invisible'
 }
 
 function alignFor(node: TextNode): 'left' | 'center' | 'right' | undefined {

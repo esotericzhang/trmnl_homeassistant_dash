@@ -55,7 +55,7 @@ export function validateLayoutConfig(config: LayoutConfig): void {
   if (config.data.selectors !== undefined) {
     if (!isStringRecord(config.data.selectors)) throw new LayoutConfigError('data.selectors must be a string map')
     for (const [key, selector] of Object.entries(config.data.selectors)) {
-      if (!(key in config.data.entities)) throw new LayoutConfigError(`data.selectors.${key} must reference an existing entity key`)
+      if (!Object.hasOwn(config.data.entities, key)) throw new LayoutConfigError(`data.selectors.${key} must reference an existing entity key`)
       if (!isSafeValuePath(selector)) throw new LayoutConfigError(`data.selectors.${key} has an unsupported path`)
     }
   }
