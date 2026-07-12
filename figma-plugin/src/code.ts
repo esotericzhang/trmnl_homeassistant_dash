@@ -53,6 +53,15 @@ type UiMessage =
 type BoundNode = SceneNode & PluginDataMixin
 type Bounds = { x: number; y: number; width: number; height: number }
 
+const METRIC_CARD = {
+  fill: { r: 0.97, g: 0.97, b: 0.97 },
+  foreground: { r: 0.067, g: 0.067, b: 0.067 },
+  muted: { r: 0.333, g: 0.333, b: 0.333 },
+  cornerRadius: 10,
+  label: { x: 16, y: 14, fontSize: 18, height: 22 },
+  value: { x: 16, y: 46, fontSize: 30 }
+} as const
+
 figma.showUI(__html__, { width: 420, height: 640, themeColors: true })
 
 figma.ui.onmessage = async (message: PluginMessage) => {
@@ -152,10 +161,10 @@ async function insertCard(entity: FigmaEntity): Promise<void> {
   card.resize(220, 92)
   card.x = 32
   card.y = 80
-  card.fills = [{ type: 'SOLID', color: { r: 0.97, g: 0.97, b: 0.97 } }]
-  card.strokes = blackFill()
+  card.fills = [{ type: 'SOLID', color: METRIC_CARD.fill }]
+  card.strokes = [{ type: 'SOLID', color: METRIC_CARD.foreground }]
   card.strokeWeight = 1
-  card.cornerRadius = 10
+  card.cornerRadius = METRIC_CARD.cornerRadius
   card.clipsContent = true
   setBinding(card, entity, 'metric_card')
 
@@ -163,22 +172,24 @@ async function insertCard(entity: FigmaEntity): Promise<void> {
   label.name = `ha-label:${entity.entity_id}`
   label.fontName = { family: 'Inter', style: 'Regular' }
   label.characters = entity.name || entity.entity_id
-  label.fontSize = 16
-  label.fills = blackFill()
-  label.x = 14
-  label.y = 12
-  label.resize(192, 22)
+  label.fontSize = METRIC_CARD.label.fontSize
+  label.fills = [{ type: 'SOLID', color: METRIC_CARD.muted }]
+  label.x = METRIC_CARD.label.x
+  label.y = METRIC_CARD.label.y
+  label.resize(card.width - METRIC_CARD.label.x * 2, METRIC_CARD.label.height)
+  label.constraints = { horizontal: 'STRETCH', vertical: 'MIN' }
   setBinding(label, entity, 'metric_label')
 
   const value = figma.createText()
   value.name = `ha-value:${entity.entity_id}`
   value.fontName = { family: 'Inter', style: 'Bold' }
   value.characters = entityValue(entity)
-  value.fontSize = 34
-  value.fills = blackFill()
-  value.x = 14
-  value.y = 42
-  value.resize(192, 42)
+  value.fontSize = METRIC_CARD.value.fontSize
+  value.fills = [{ type: 'SOLID', color: METRIC_CARD.foreground }]
+  value.x = METRIC_CARD.value.x
+  value.y = METRIC_CARD.value.y
+  value.resize(card.width - METRIC_CARD.value.x * 2, Math.max(card.height - METRIC_CARD.value.y, 1))
+  value.constraints = { horizontal: 'STRETCH', vertical: 'STRETCH' }
   setBinding(value, entity, 'metric_value')
 
   card.appendChild(label)
@@ -281,7 +292,7 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
   if (binding?.widget_type === 'metric_card') {
     const parts = metricCardParts(node, warnings)
     if (!parts) {
-      warnings.push(`${node.name}: skipped because its bound label or value is missing, hidden, transparent, or clipped.`)
+      warnings.push(`${node.name}: skipped because it differs from the supported metric-card template.`)
       return null
     }
     return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: parts.label.characters, ...bounds, fontSize: typeof parts.value.fontSize === 'number' ? parts.value.fontSize : 30 }
@@ -501,12 +512,68 @@ function metricCardParts(node: SceneNode, warnings: string[]): { label: TextNode
   const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label')
   const value = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value')
   if (label?.type !== 'TEXT' || value?.type !== 'TEXT') return null
+  if (!hasCanonicalMetricCardStyle(node) || !hasCanonicalMetricPart(label, node, 'label') || !hasCanonicalMetricPart(value, node, 'value')) return null
   for (const part of [label, value]) {
     if (!hasRepresentableTypography(part, warnings)) return null
     if (!hasRepresentableTextPaint(part, warnings)) return null
   }
   if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox)) return null
   return { label, value }
+}
+
+function hasCanonicalMetricCardStyle(node: SceneNode): boolean {
+  if (node.type !== 'FRAME') return false
+  return node.opacity === 1
+    && node.visible
+    && node.clipsContent
+    && node.effects.every(effect => effect.visible === false)
+    && node.cornerRadius !== figma.mixed
+    && close(node.cornerRadius, METRIC_CARD.cornerRadius)
+    && node.strokeWeight !== figma.mixed
+    && close(node.strokeWeight, 1)
+    && node.strokeAlign === 'INSIDE'
+    && node.dashPattern.length === 0
+    && hasCanonicalSolidPaint(node.fills, METRIC_CARD.fill)
+    && hasCanonicalSolidPaint(node.strokes, METRIC_CARD.foreground)
+}
+
+function hasCanonicalMetricPart(node: TextNode, card: SceneNode & ChildrenMixin, kind: 'label' | 'value'): boolean {
+  const expected = METRIC_CARD[kind]
+  const expectedHeight = kind === 'label' ? METRIC_CARD.label.height : Math.max(card.height - METRIC_CARD.value.y, 1)
+  const expectedColor = kind === 'label' ? METRIC_CARD.muted : METRIC_CARD.foreground
+  const expectedStyle = kind === 'label' ? 'regular' : 'bold'
+  return node.parent === card
+    && node.visible
+    && node.opacity === 1
+    && node.effects.every(effect => effect.visible === false)
+    && close(node.x, expected.x)
+    && close(node.y, expected.y)
+    && close(node.width, card.width - expected.x * 2)
+    && close(node.height, expectedHeight)
+    && node.fontName !== figma.mixed
+    && node.fontName.family === 'Inter'
+    && node.fontName.style.toLowerCase() === expectedStyle
+    && node.fontSize !== figma.mixed
+    && (kind === 'value' || close(node.fontSize, expected.fontSize))
+    && node.textAlignHorizontal === 'LEFT'
+    && node.textAlignVertical === 'TOP'
+    && node.textAutoResize === 'NONE'
+    && hasCanonicalSolidPaint(node.fills, expectedColor)
+}
+
+function hasCanonicalSolidPaint(paints: readonly Paint[] | PluginAPI['mixed'], color: RGB): boolean {
+  if (paints === figma.mixed) return false
+  const visible = paints.filter(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001)
+  return visible.length === 1
+    && visible[0].type === 'SOLID'
+    && (visible[0].opacity ?? 1) === 1
+    && close(visible[0].color.r, color.r)
+    && close(visible[0].color.g, color.g)
+    && close(visible[0].color.b, color.b)
+}
+
+function close(actual: number, expected: number): boolean {
+  return Math.abs(actual - expected) < 0.01
 }
 
 function hasRepresentableTypography(node: TextNode, warnings: string[]): boolean {

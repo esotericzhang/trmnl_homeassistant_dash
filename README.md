@@ -230,3 +230,5 @@ Loading Figma entities always requires a configured `SETTINGS_TOKEN` and the mat
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
 `GET /api/figma/entities` always requires a configured token. Other protected endpoints (`POST /api/figma/preview-layout`, `PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+
+The Figma plugin exports metric cards only when their container and bound label/value nodes still match the supported renderer template. Moving or resizing the card and editing its label or value binding are supported; visual, opacity, child-position, and typography changes are skipped with an export warning because the saved layout cannot represent them.
