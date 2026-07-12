@@ -200,6 +200,7 @@ async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
       if (!entity) continue
       bound.setPluginData('unit', binding.value_path === 'state' ? (entity.unit ?? '') : '')
       if (bound.type === 'TEXT') {
+        await loadTextNodeFonts(bound)
         if (binding.binding_type === 'metric_value') bound.characters = entityValue(entityForBinding(entity, binding))
         else if (binding.binding_type === 'metric_label') continue
         else if (binding.binding_type === 'text') {
@@ -250,7 +251,8 @@ function selectedExportFrame(): FrameNode {
 }
 
 function isTrmnlFrame(node: FrameNode): boolean {
-  return Math.round(node.width) === 800 && Math.round(node.height) === 480
+  const epsilon = 0.001
+  return Math.abs(node.width - 800) < epsilon && Math.abs(node.height - 480) < epsilon
 }
 
 function containingFrame(node: BaseNode): FrameNode | null {
@@ -435,6 +437,13 @@ async function loadInter(style: 'Regular' | 'Bold'): Promise<void> {
   } catch {
     throw new Error(`Could not load Inter ${style}. Install or enable Inter in Figma, then retry.`)
   }
+}
+
+async function loadTextNodeFonts(node: TextNode): Promise<void> {
+  const fonts = node.getRangeAllFontNames(0, node.characters.length)
+  if (typeof node.fontName === 'object') fonts.push(node.fontName)
+  const uniqueFonts = new Map(fonts.map(font => [`${font.family}\u0000${font.style}`, font]))
+  await Promise.all([...uniqueFonts.values()].map(font => figma.loadFontAsync(font)))
 }
 
 function entityLine(entity: FigmaEntity): string {

@@ -15,7 +15,7 @@ describe('renderer', () => {
 
     const svg = renderSvg(config, data)
 
-    expect(svg).toContain('<text x="20" y="50"')
+    expect(svg).toContain('<text x="20" y="30"')
     expect(svg).toContain('A &amp; B')
     expect(svg).not.toContain('A &amp;amp; B')
   })
@@ -161,9 +161,9 @@ describe('renderer', () => {
     const svg = renderSvg(config, { values: {}, states: {} })
     expect(svg).toContain('<clipPath id="clip-0-bounded-text"><rect x="10" y="20" width="70" height="40" /></clipPath>')
     expect(svg).toContain('clip-path="url(#clip-0-bounded-text)"')
-    expect(svg).toContain('y="36"')
-    expect(svg).toContain('y="56"')
-    expect(svg).not.toContain('y="76"')
+    expect(svg).toContain('y="20"')
+    expect(svg).toContain('y="40"')
+    expect(svg).not.toContain('y="60"')
     expect(svg).not.toContain('Second line')
   })
 
