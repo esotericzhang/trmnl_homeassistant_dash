@@ -431,16 +431,16 @@ function readBinding(node) {
 }
 function textLabel(node, fallback) {
     const storedValue = node.getPluginData('bound_text_value');
-    if (storedValue && !boundTextLabelFromSuffix(node.characters, storedValue))
+    if (storedValue && boundTextLabelFromSuffix(node.characters, storedValue) === null)
         return null;
     const label = boundTextLabel(node, fallback);
-    return label || fallback;
+    return label ?? fallback;
 }
 function boundTextLabel(node, fallback, currentValue) {
     const stored = node.getPluginData('bound_text_label');
     const storedValue = node.getPluginData('bound_text_value');
     const edited = boundTextLabelFromSuffix(node.characters, storedValue || currentValue);
-    if (edited)
+    if (edited !== null)
         return edited;
     if (stored)
         return stored;
@@ -449,10 +449,10 @@ function boundTextLabel(node, fallback, currentValue) {
 }
 function boundTextLabelFromSuffix(current, value) {
     if (!value)
-        return '';
+        return null;
     const suffix = `: ${value}`;
     if (!current.endsWith(suffix))
-        return '';
+        return null;
     return current.slice(0, -suffix.length).trim();
 }
 function metricCardParts(node, warnings) {

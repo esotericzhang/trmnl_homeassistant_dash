@@ -474,25 +474,25 @@ function readBinding(node: BaseNode): { entity_id: string; binding_type: string;
 
 function textLabel(node: TextNode, fallback: string): string | null {
   const storedValue = node.getPluginData('bound_text_value')
-  if (storedValue && !boundTextLabelFromSuffix(node.characters, storedValue)) return null
+  if (storedValue && boundTextLabelFromSuffix(node.characters, storedValue) === null) return null
   const label = boundTextLabel(node, fallback)
-  return label || fallback
+  return label ?? fallback
 }
 
 function boundTextLabel(node: TextNode, fallback: string, currentValue?: string): string {
   const stored = node.getPluginData('bound_text_label')
   const storedValue = node.getPluginData('bound_text_value')
   const edited = boundTextLabelFromSuffix(node.characters, storedValue || currentValue)
-  if (edited) return edited
+  if (edited !== null) return edited
   if (stored) return stored
   node.setPluginData('bound_text_label', fallback)
   return fallback
 }
 
-function boundTextLabelFromSuffix(current: string, value?: string): string {
-  if (!value) return ''
+function boundTextLabelFromSuffix(current: string, value?: string): string | null {
+  if (!value) return null
   const suffix = `: ${value}`
-  if (!current.endsWith(suffix)) return ''
+  if (!current.endsWith(suffix)) return null
   return current.slice(0, -suffix.length).trim()
 }
 
