@@ -108,7 +108,7 @@ async function insertCard(entity) {
     label.fontName = { family: 'Inter', style: 'Regular' };
     label.characters = entity.name || entity.entity_id;
     label.fontSize = 16;
-    label.fills = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.3 } }];
+    label.fills = blackFill();
     label.x = 14;
     label.y = 12;
     label.resize(192, 22);
@@ -241,13 +241,8 @@ function exportNode(node, frame, warnings) {
     if (node.type === 'TEXT') {
         if (!hasRepresentableTypography(node, warnings))
             return null;
-        const paintVisibility = textPaintVisibility(node);
-        if (paintVisibility === 'partial')
-            warnings.push(`${node.name}: text fill opacity cannot be represented and will export as fully opaque.`);
-        if (paintVisibility !== 'visible' && paintVisibility !== 'partial') {
-            warnings.push(`${node.name}: skipped because its text fills are ${paintVisibility === 'mixed' ? 'mixed and cannot be safely exported' : 'hidden or transparent'}.`);
+        if (!hasRepresentableTextPaint(node, warnings))
             return null;
-        }
         const label = binding ? textLabel(node, binding.entity_id) : undefined;
         if (label === null) {
             warnings.push(`${node.name}: skipped because its bound label and value changed; use Refresh Selected before exporting.`);
@@ -309,7 +304,7 @@ function exportTree(node, frame, clip, widgets, warnings, ancestorOpacity = 1) {
     if (exportedDescendants > 0 && hasUnsupportedContainerStyle(node)) {
         warnings.push(`${node.name}: container fills, strokes, or effects cannot be represented and will be omitted.`);
     }
-    else if (exportedDescendants === 0 && isUnsupportedVisualNode(node)) {
+    else if (exportedDescendants === 0 && (hasUnsupportedContainerStyle(node) || isUnsupportedVisualNode(node))) {
         warnings.push(`${node.name}: skipped visible ${node.type.toLowerCase()} because this export type is unsupported.`);
     }
     return exportedDescendants;
@@ -470,12 +465,7 @@ function metricCardParts(node, warnings) {
     for (const part of [label, value]) {
         if (!hasRepresentableTypography(part, warnings))
             return null;
-        const paintVisibility = textPaintVisibility(part);
-        if (paintVisibility === 'mixed')
-            warnings.push(`${part.name}: mixed text fills cannot be safely exported.`);
-        if (paintVisibility === 'partial')
-            warnings.push(`${part.name}: text fill opacity cannot be represented and will export as fully opaque.`);
-        if (paintVisibility !== 'visible' && paintVisibility !== 'partial')
+        if (!hasRepresentableTextPaint(part, warnings))
             return null;
     }
     if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox))
@@ -488,21 +478,47 @@ function hasRepresentableTypography(node, warnings) {
         mixed.push('font name');
     if (node.fontSize === figma.mixed)
         mixed.push('font size');
-    if (mixed.length === 0)
-        return true;
-    warnings.push(`${node.name}: skipped because mixed ${mixed.join(' and ')} cannot be represented.`);
-    return false;
+    if (mixed.length > 0) {
+        warnings.push(`${node.name}: skipped because mixed ${mixed.join(' and ')} cannot be represented.`);
+        return false;
+    }
+    if (typeof node.fontName !== 'object')
+        return false;
+    const style = node.fontName.style.toLowerCase().replace(/[\s-]+/g, '');
+    if (node.fontName.family !== 'Inter' || !/^(regular|bold|thin|hairline|extralight|ultralight|light|medium|semibold|demibold|extrabold|ultrabold|black|heavy)$/.test(style)) {
+        warnings.push(`${node.name}: skipped because font family or style cannot be represented.`);
+        return false;
+    }
+    return true;
 }
 function isVisibleMetricPart(node, cardBounds) {
     return node.visible && node.opacity > 0.001 && Boolean(node.absoluteBoundingBox) && !isClipped(node, cardBounds);
 }
-function textPaintVisibility(node) {
-    if (node.fills === figma.mixed)
-        return 'mixed';
+function hasRepresentableTextPaint(node, warnings) {
+    if (node.fills === figma.mixed) {
+        warnings.push(`${node.name}: skipped because mixed text fills cannot be safely exported.`);
+        return false;
+    }
     const visiblePaints = node.fills.filter(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001);
-    if (visiblePaints.length === 0)
-        return 'invisible';
-    return visiblePaints.some(paint => (paint.opacity ?? 1) < 0.999) ? 'partial' : 'visible';
+    if (visiblePaints.length === 0) {
+        warnings.push(`${node.name}: skipped because its text fills are hidden or transparent.`);
+        return false;
+    }
+    if (visiblePaints.length !== 1 || visiblePaints[0].type !== 'SOLID') {
+        warnings.push(`${node.name}: skipped because multiple, gradient, image, or other non-solid text fills cannot be represented.`);
+        return false;
+    }
+    const paint = visiblePaints[0];
+    if ((paint.opacity ?? 1) < 0.999) {
+        warnings.push(`${node.name}: skipped because text fill opacity cannot be represented.`);
+        return false;
+    }
+    const { r, g, b } = paint.color;
+    if (Math.max(r, g, b) > 0.1 || Math.max(r, g, b) - Math.min(r, g, b) > 0.001) {
+        warnings.push(`${node.name}: skipped because its text color does not match the supported foreground.`);
+        return false;
+    }
+    return true;
 }
 function alignFor(node) {
     if (node.textAlignHorizontal === 'CENTER')
