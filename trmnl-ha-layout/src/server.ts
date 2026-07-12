@@ -366,17 +366,18 @@ function isSupportedFigmaEntity(state: HassState): boolean {
 
 function sanitizeEntity(state: HassState): FigmaEntity {
   const attributes = state.attributes ?? {}
-  const sanitizedState = isSecretLikeEntity(state) ? undefined : sanitizePrimitive(state.state)
+  const secretLike = isSecretLikeEntity(state)
+  const sanitizedState = secretLike ? undefined : sanitizePrimitive(state.state)
   return {
     entity_id: state.entity_id,
-    name: sanitizedStringAttribute(attributes.friendly_name) ?? state.entity_id,
+    name: secretLike ? state.entity_id : (sanitizedStringAttribute(attributes.friendly_name) ?? state.entity_id),
     state: sanitizedState === undefined ? '—' : String(sanitizedState),
-    unit: sanitizedStringAttribute(attributes.unit_of_measurement),
+    unit: secretLike ? null : sanitizedStringAttribute(attributes.unit_of_measurement),
     domain: state.entity_id.includes('.') ? state.entity_id.split('.')[0] : null,
-    device_class: sanitizedStringAttribute(attributes.device_class),
+    device_class: secretLike ? null : sanitizedStringAttribute(attributes.device_class),
     values: [
       { path: 'state', label: 'State', value: sanitizedState ?? '—' },
-      ...sanitizeAttributeValues(attributes)
+      ...(secretLike ? [] : sanitizeAttributeValues(attributes))
     ]
   }
 }
@@ -494,17 +495,15 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
   if (item.entity !== undefined && (typeof item.entity !== 'string' || !/^[a-z0-9_]+\.[a-z0-9_]+$/.test(item.entity))) {
     throw new FigmaLayoutError(`widget ${index} has malformed entity id`)
   }
-  if (item.unit !== undefined && item.unit !== null && typeof item.unit !== 'string') {
-    throw new FigmaLayoutError(`widget ${index} has invalid unit`)
-  }
+  validateOptionalFigmaString(item.unit, 'unit', index, 64, true)
   if (item.valuePath !== undefined && (typeof item.valuePath !== 'string' || !isSafeValuePath(item.valuePath))) {
     throw new FigmaLayoutError(`widget ${index} has invalid valuePath`)
   }
   if (item.format !== undefined && (typeof item.format !== 'string' || !['', 'minutes', 'time', 'date'].includes(item.format))) {
     throw new FigmaLayoutError(`widget ${index} has invalid format`)
   }
-  if (item.label !== undefined && typeof item.label !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid label`)
-  if (item.staticText !== undefined && typeof item.staticText !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid staticText`)
+  validateOptionalFigmaString(item.label, 'label', index, 256)
+  validateOptionalFigmaString(item.staticText, 'staticText', index, 4096)
   if (item.weight !== undefined && !isSupportedFontWeight(item.weight)) {
     throw new FigmaLayoutError(`widget ${index} has invalid weight`)
   }
@@ -516,6 +515,16 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
     throw new FigmaLayoutError(`widget ${index} has invalid align`)
   }
   return normalized
+}
+
+function validateOptionalFigmaString(value: unknown, field: string, index: number, maxLength: number, allowNull = false): void {
+  if (value === undefined || (allowNull && value === null)) return
+  if (typeof value !== 'string' || value.length > maxLength || [...value].some(character => {
+    const code = character.charCodeAt(0)
+    return code === 127 || (code < 32 && code !== 9 && code !== 10 && code !== 13)
+  })) {
+    throw new FigmaLayoutError(`widget ${index} has invalid ${field}`)
+  }
 }
 
 function isSupportedFontWeight(weight: unknown): weight is number | string {

@@ -282,13 +282,18 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
     return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: metricValueFontSize(node) ?? 30 }
   }
   if (node.type === 'TEXT') {
+    const label = binding ? textLabel(node, binding.entity_id) : undefined
+    if (label === null) {
+      warnings.push(`${node.name}: skipped because its bound label and value changed; use Refresh Selected before exporting.`)
+      return null
+    }
     return {
       type: 'text',
       entity: binding?.entity_id,
       unit: binding?.unit,
       valuePath: binding?.value_path,
       format: binding?.format,
-      label: binding ? textLabel(node, binding.entity_id) : undefined,
+      label,
       staticText: binding ? undefined : node.characters,
       fontSize: typeof node.fontSize === 'number' ? node.fontSize : undefined,
       align: alignFor(node),
@@ -468,7 +473,9 @@ function cardLabel(node: SceneNode, fallback: string): string {
   return fallback
 }
 
-function textLabel(node: TextNode, fallback: string): string {
+function textLabel(node: TextNode, fallback: string): string | null {
+  const storedValue = node.getPluginData('bound_text_value')
+  if (storedValue && !boundTextLabelFromSuffix(node.characters, storedValue)) return null
   const label = boundTextLabel(node, fallback)
   return label || fallback
 }

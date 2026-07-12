@@ -202,8 +202,8 @@ describe('renderer', () => {
     }
 
     const svg = renderSvg(config, { values: {}, states: {} })
-    expect(svg).toContain('<clipPath id="clip-metric-small-card"><rect x="10" y="20" width="80" height="24" rx="10" /></clipPath>')
-    expect(svg).toContain('<g clip-path="url(#clip-metric-small-card)" transform="translate(10,20)">')
+    expect(svg).toContain('<clipPath id="clip-metric-0-small-card"><rect x="0" y="0" width="80" height="24" rx="10" /></clipPath>')
+    expect(svg).toContain('<g clip-path="url(#clip-metric-0-small-card)" transform="translate(10,20)">')
   })
 
   it('uses render-local clip ids for text items with colliding ids', () => {
@@ -218,6 +218,20 @@ describe('renderer', () => {
     const svg = renderSvg(config, { values: {}, states: {} })
     expect(svg).toContain('id="clip-0-same-id"')
     expect(svg).toContain('id="clip-1-same-id"')
+  })
+
+  it('uses render-local clip ids for metric items with colliding ids', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [
+        { id: 'same id', type: 'metric', x: 0, y: 0, width: 100, height: 40, label: 'First', value: '1' },
+        { id: 'same-id', type: 'metric', x: 0, y: 50, width: 100, height: 40, label: 'Second', value: '2' }
+      ]
+    }
+    const svg = renderSvg(config, { values: {}, states: {} })
+    expect(svg).toContain('id="clip-metric-0-same-id"')
+    expect(svg).toContain('id="clip-metric-1-same-id"')
   })
 
   it('escapes masked HA token placeholders in editor settings UI', () => {

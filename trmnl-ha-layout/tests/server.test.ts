@@ -365,10 +365,10 @@ describe('figma bridge routes', () => {
         {
           entity_id: 'input_text.access_code',
           state: '1234',
-          attributes: { friendly_name: 'Access code' }
+          attributes: { friendly_name: 'Access code', current: 1234, status: '1234' }
         },
-        { entity_id: 'sensor.door_pin', state: '7391', attributes: { friendly_name: 'Door PIN' } },
-        { entity_id: 'sensor.api_credential', state: 'opaque-value', attributes: { device_class: 'temperature' } }
+        { entity_id: 'sensor.door_pin', state: '7391', attributes: { friendly_name: 'Door PIN', native_value: 7391 } },
+        { entity_id: 'sensor.api_credential', state: 'opaque-value', attributes: { device_class: 'temperature', status: 'opaque-value' } }
       ]), { status: 200 })
     }) as typeof fetch
 
@@ -384,12 +384,12 @@ describe('figma bridge routes', () => {
         state: '—',
         unit: null,
         domain: 'sensor',
-        device_class: 'temperature',
+        device_class: null,
         values: [{ path: 'state', label: 'State', value: '—' }]
       },
       {
         entity_id: 'sensor.door_pin',
-        name: 'Door PIN',
+        name: 'sensor.door_pin',
         state: '—',
         unit: null,
         domain: 'sensor',
@@ -587,6 +587,23 @@ describe('figma bridge routes', () => {
     ['weight out of range', { weight: 1001 }],
     ['rounded fontSize', { fontSize: 0.4 }]
   ])('PUT /api/figma/layout rejects invalid %s fields', async (_field, invalid) => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', x: 10, y: 10, width: 100, height: 30, ...invalid }] })
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it.each([
+    ['unit length', { unit: 'u'.repeat(65) }],
+    ['label length', { label: 'l'.repeat(257) }],
+    ['staticText length', { staticText: 't'.repeat(4097) }],
+    ['unit control character', { unit: 'degrees\u0000F' }],
+    ['label control character', { label: 'Kitchen\u0007' }],
+    ['staticText control character', { staticText: 'Line\u000Bbreak' }]
+  ])('PUT /api/figma/layout rejects invalid %s', async (_field, invalid) => {
     const res = await fetch(`${baseUrl}/api/figma/layout`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
