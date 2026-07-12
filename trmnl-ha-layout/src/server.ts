@@ -138,7 +138,7 @@ app.get('/api/figma/entities', async (req, res, next) => {
       : Object.values(sampleRenderData(layout).states)
     res.json({
       source: config.accessToken ? 'live' : 'sample',
-      entities: states.filter(state => isSupportedFigmaEntity(state) && !isSecretLikeEntity(state)).map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id))
+      entities: sanitizeFigmaEntities(states)
     })
   } catch (error) { next(error) }
 })
@@ -376,7 +376,23 @@ function isSupportedFigmaEntity(state: HassState): boolean {
   return separator > 0 && FIGMA_ENTITY_DOMAINS.has(state.entity_id.slice(0, separator))
 }
 
-function sanitizeEntity(state: HassState): FigmaEntity {
+const MAX_FIGMA_ENTITIES = 1000
+const MAX_FIGMA_VALUES = 5000
+
+function sanitizeFigmaEntities(states: HassState[]): FigmaEntity[] {
+  const entities: FigmaEntity[] = []
+  let valueCount = 0
+  for (const state of states) {
+    if (entities.length >= MAX_FIGMA_ENTITIES || valueCount >= MAX_FIGMA_VALUES) break
+    if (!isSupportedFigmaEntity(state) || isSecretLikeEntity(state)) continue
+    const entity = sanitizeEntity(state, MAX_FIGMA_VALUES - valueCount)
+    entities.push(entity)
+    valueCount += entity.values?.length ?? 0
+  }
+  return entities.sort((a, b) => a.entity_id.localeCompare(b.entity_id))
+}
+
+function sanitizeEntity(state: HassState, maxValues = 100): FigmaEntity {
   const attributes = state.attributes ?? {}
   const sanitizedState = sanitizePrimitive(state.state)
   return {
@@ -388,8 +404,8 @@ function sanitizeEntity(state: HassState): FigmaEntity {
     device_class: sanitizedStringAttribute(attributes.device_class),
     values: [
       { path: 'state', label: 'State', value: sanitizedState ?? '—' },
-      ...sanitizeAttributeValues(attributes)
-    ]
+      ...sanitizeAttributeValues(attributes, Math.max(maxValues - 1, 0))
+    ].slice(0, maxValues)
   }
 }
 
@@ -400,10 +416,10 @@ function isSecretLikeEntity(state: HassState): boolean {
     || /^(?:code|key|password|secret|token)$/i.test(deviceClass)
 }
 
-function sanitizeAttributeValues(attributes: Record<string, unknown>): FigmaEntity['values'] {
+function sanitizeAttributeValues(attributes: Record<string, unknown>, maxValues = 100): FigmaEntity['values'] {
   const values: FigmaEntity['values'] = []
   const visit = (value: unknown, path: string, depth: number): void => {
-    if (values.length >= 100 || depth > 4) return
+    if (values.length >= maxValues || depth > 4) return
     if (isPrimitive(value)) {
       const sanitized = sanitizePrimitive(value)
       if (sanitized !== undefined) values.push({ path, label: path.replace(/^attributes\./, ''), value: sanitized })

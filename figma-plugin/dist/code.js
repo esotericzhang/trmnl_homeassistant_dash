@@ -509,9 +509,14 @@ function hasPluginData(node, key) {
 function metricCardParts(node, warnings) {
     if (!('children' in node) || !node.absoluteBoundingBox)
         return null;
-    const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
-    const value = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value');
-    if (label?.type !== 'TEXT' || value?.type !== 'TEXT')
+    const visibleChildren = node.children.filter(child => child.visible && (!('opacity' in child) || child.opacity > 0.001) && child.absoluteBoundingBox && !isClipped(child, node.absoluteBoundingBox));
+    const labels = visibleChildren.filter(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
+    const values = visibleChildren.filter(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value');
+    if (visibleChildren.length !== 2 || labels.length !== 1 || values.length !== 1)
+        return null;
+    const [label] = labels;
+    const [value] = values;
+    if (label.type !== 'TEXT' || value.type !== 'TEXT')
         return null;
     if (!hasCanonicalMetricCardStyle(node) || !hasCanonicalMetricPart(label, node, 'label') || !hasCanonicalMetricPart(value, node, 'value'))
         return null;
@@ -560,7 +565,8 @@ function hasCanonicalMetricPart(node, card, kind) {
         && node.textAlignHorizontal === 'LEFT'
         && node.textAlignVertical === 'TOP'
         && node.textAutoResize === 'NONE'
-        && hasCanonicalSolidPaint(node.fills, expectedColor);
+        && hasCanonicalSolidPaint(node.fills, expectedColor)
+        && !hasVisiblePaint(node.strokes);
 }
 function hasCanonicalSolidPaint(paints, color) {
     if (paints === figma.mixed)

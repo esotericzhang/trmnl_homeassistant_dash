@@ -244,6 +244,19 @@ describe('renderer', () => {
     expect(svg).not.toContain('>WWWW</text>')
   })
 
+  it('marks text truncated by item height with an ellipsis', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'truncated', type: 'text', x: 0, y: 0, width: 90, height: 20, fontSize: 16, text: 'Sunrise 6:00 Sunset 8:00' }]
+    }
+
+    const svg = renderSvg(config, { values: {}, states: {} })
+
+    expect(svg).toContain('…</text>')
+    expect(svg).not.toContain('Sunset 8:00')
+  })
+
   it('uses unique forecast clip paths for IDs with the same sanitized form', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
@@ -271,6 +284,19 @@ describe('renderer', () => {
     const svg = renderSvg(config, { values: {}, states: {} })
     expect(svg).toContain('<clipPath id="clip-metric-0-small-card"><rect x="0" y="0" width="80" height="24" rx="10" /></clipPath>')
     expect(svg).toContain('<g clip-path="url(#clip-metric-0-small-card)" transform="translate(10,20)">')
+    expect(svg).toContain('<text x="16" y="0" font-size="40" font-weight="700">123</text>')
+  })
+
+  it('keeps normal metric values inside legacy card bounds', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'legacy-card', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Label', value: '123', fontSize: 20 }]
+    }
+
+    const svg = renderSvg(config, { values: {}, states: {} })
+
+    expect(svg).toContain('<text x="16" y="42" font-size="20" font-weight="700">123</text>')
   })
 
   it('uses render-local clip ids for text items with colliding ids', () => {

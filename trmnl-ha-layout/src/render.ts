@@ -553,10 +553,13 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
 
 function renderMetric(item: MetricItem, data: RenderData, index: number): string {
   const clipId = `clip-metric-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  const valueFontSize = item.fontSize ?? 30
+  const labelY = Math.min(14, Math.max(item.height - valueFontSize - 8, 0))
+  const valueY = Math.max(Math.min(46, item.height - valueFontSize), labelY)
   return `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="${item.width}" height="${item.height}" rx="10" /></clipPath></defs><g clip-path="url(#${clipId})" transform="translate(${item.x},${item.y})">
     <rect width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
-    <text x="16" y="14" font-size="18" class="muted">${escapeXml(item.label)}</text>
-    <text x="16" y="46" font-size="${item.fontSize ?? 30}" font-weight="700">${interpolate(item.value, data.values)}${escapeXml(item.suffix ?? '')}</text>
+    <text x="16" y="${labelY}" font-size="18" class="muted">${escapeXml(item.label)}</text>
+    <text x="16" y="${valueY}" font-size="${valueFontSize}" font-weight="700">${interpolate(item.value, data.values)}${escapeXml(item.suffix ?? '')}</text>
   </g>`
 }
 
@@ -616,8 +619,12 @@ function truncateText(text: string, maxWidth: number, fontSize: number): string 
 
 function wrapText(text: string, maxWidth: number, fontSize: number, weight: number, maxLines: number): string[] {
   const lines: string[] = []
+  let truncated = false
   for (const paragraph of text.split('\n')) {
-    if (lines.length >= maxLines) break
+    if (lines.length >= maxLines) {
+      truncated = true
+      break
+    }
     if (!paragraph) {
       lines.push('')
       continue
@@ -649,9 +656,21 @@ function wrapText(text: string, maxWidth: number, fontSize: number, weight: numb
       lines.push(characters.slice(start, end).join(''))
       start = end
       while (characters[start]?.trim() === '') start++
+      if (lines.length >= maxLines && start < characters.length) truncated = true
     }
   }
+  if (truncated && lines.length > 0) lines[lines.length - 1] = fitEllipsis(lines[lines.length - 1], maxWidth, fontSize, weight)
   return lines
+}
+
+function fitEllipsis(line: string, maxWidth: number, fontSize: number, weight: number): string {
+  const characters = graphemes(line)
+  const ellipsisWidth = estimatedGraphemeWidth('…', fontSize, weight)
+  let width = characters.reduce((sum, character) => sum + estimatedGraphemeWidth(character, fontSize, weight), 0)
+  while (characters.length > 0 && width + ellipsisWidth > maxWidth) {
+    width -= estimatedGraphemeWidth(characters.pop()!, fontSize, weight)
+  }
+  return `${characters.join('').trimEnd()}…`
 }
 
 function estimatedGraphemeWidth(grapheme: string, fontSize: number, weight: number): number {

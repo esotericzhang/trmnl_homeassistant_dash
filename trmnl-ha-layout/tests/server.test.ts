@@ -419,6 +419,25 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('device-secret')
   })
 
+  it('GET /api/figma/entities caps aggregate entities and values', async () => {
+    saveSettings({ ...loadSettings(), settingsToken: 'test-settings-token' })
+    const states = Array.from({ length: 1100 }, (_, index) => ({
+      entity_id: `sensor.value_${index}`,
+      state: String(index),
+      attributes: { forecast: Array.from({ length: 8 }, (_entry, forecastIndex) => ({ temperature: forecastIndex })) }
+    }))
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url).startsWith(baseUrl)) return originalFetch(url, init)
+      return new Response(JSON.stringify(states), { status: 200 })
+    }) as typeof fetch
+
+    const res = await fetch(`${baseUrl}/api/figma/entities`, { headers: { Authorization: 'Bearer test-settings-token' } })
+    const body = await res.json() as { entities: Array<{ values: unknown[] }> }
+
+    expect(body.entities.length).toBeLessThanOrEqual(1000)
+    expect(body.entities.reduce((total, entity) => total + entity.values.length, 0)).toBeLessThanOrEqual(5000)
+  })
+
   it('GET /api/figma/entities rejects access without a configured token in development', async () => {
     const existing = loadSettings()
     saveSettings({ ...existing, settingsToken: undefined })
