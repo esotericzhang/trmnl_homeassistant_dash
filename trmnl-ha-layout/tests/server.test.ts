@@ -350,18 +350,42 @@ describe('figma bridge routes', () => {
       expect(urlString).toBe('http://ha.local:8123/api/states')
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer secret-ha-token')
       return new Response(JSON.stringify([
-        { entity_id: 'sensor.temperature', state: '72.4', attributes: { friendly_name: 'Temperature', unit_of_measurement: '°F', device_class: 'temperature' } }
+        {
+          entity_id: 'sensor.temperature',
+          state: '72.4',
+          attributes: {
+            friendly_name: 'Temperature',
+            unit_of_measurement: '°F',
+            device_class: 'temperature',
+            forecast: [{ temperature: 61, condition: 'cloudy' }],
+            api_key: 'must-not-leak'
+          }
+        }
       ]), { status: 200 })
     }) as typeof fetch
 
     const res = await fetch(`${baseUrl}/api/figma/entities`)
     expect(res.ok).toBe(true)
     expect(res.headers.get('access-control-allow-origin')).toBe('*')
-    const body = await res.json() as { entities: Array<Record<string, unknown>> }
+    const body = await res.json() as { source: string; entities: Array<Record<string, unknown>> }
+    expect(body.source).toBe('live')
     expect(body.entities).toEqual([
-      { entity_id: 'sensor.temperature', name: 'Temperature', state: '72.4', unit: '°F', domain: 'sensor', device_class: 'temperature' }
+      {
+        entity_id: 'sensor.temperature',
+        name: 'Temperature',
+        state: '72.4',
+        unit: '°F',
+        domain: 'sensor',
+        device_class: 'temperature',
+        values: [
+          { path: 'state', label: 'State', value: '72.4' },
+          { path: 'attributes.forecast.0.temperature', label: 'forecast.0.temperature', value: 61 },
+          { path: 'attributes.forecast.0.condition', label: 'forecast.0.condition', value: 'cloudy' }
+        ]
+      }
     ])
     expect(JSON.stringify(body)).not.toContain('secret-ha-token')
+    expect(JSON.stringify(body)).not.toContain('must-not-leak')
   })
 
   it('GET /api/figma/entities allows no-token production access when no settings token is configured', async () => {
@@ -374,6 +398,7 @@ describe('figma bridge routes', () => {
       const res = await fetch(`${baseUrl}/api/figma/entities`)
       expect(res.ok).toBe(true)
       expect(res.headers.get('access-control-allow-origin')).toBe('*')
+      expect((await res.json() as { source: string }).source).toBe('sample')
     } finally {
       process.env.NODE_ENV = originalNodeEnv
     }
@@ -453,6 +478,27 @@ describe('figma bridge routes', () => {
     expect(body.data.entities).toEqual({ kitchenTemperature: 'sensor.kitchen_temperature' })
     expect(body.items[0].text).toContain('{{ kitchenTemperature }}')
     expect(body.items[1].value).toBe('{{ kitchenTemperature }}')
+  })
+
+  it('PUT /api/figma/layout saves attribute selectors and formatter presets', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        width: 800,
+        height: 480,
+        widgets: [
+          { type: 'metric_card', entity: 'sensor.sleep', label: 'Sleep', valuePath: 'state', format: 'minutes', x: 20, y: 20, width: 220, height: 92 },
+          { type: 'text', entity: 'sensor.weather', label: 'First temp', valuePath: 'attributes.forecast.0.temperature', x: 20, y: 130, width: 220, height: 32 }
+        ]
+      })
+    })
+
+    expect(res.ok).toBe(true)
+    const body = await res.json()
+    expect(body.items[0].value).toBe('{{ sleep | minutes }}')
+    expect(body.items[1].text).toBe('First temp: {{ weather }}')
+    expect(body.data.selectors).toEqual({ weather: 'attributes.forecast.0.temperature' })
   })
 
   it('PUT /api/figma/layout rejects widgets outside the frame', async () => {

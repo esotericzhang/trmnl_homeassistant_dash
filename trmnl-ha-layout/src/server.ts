@@ -133,7 +133,10 @@ app.get('/api/figma/entities', async (req, res, next) => {
     const states = config.accessToken
       ? await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates()
       : Object.values(sampleRenderData(layout).states)
-    res.json({ entities: states.map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id)) })
+    res.json({
+      source: config.accessToken ? 'live' : 'sample',
+      entities: states.map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id))
+    })
   } catch (error) { next(error) }
 })
 
@@ -335,12 +338,15 @@ interface FigmaEntity {
   unit: string | null
   domain: string | null
   device_class: string | null
+  values: Array<{ path: string; label: string; value: string | number | boolean | null }>
 }
 
 interface FigmaWidget {
   type: 'text' | 'metric_card'
   entity?: string
   unit?: string | null
+  valuePath?: string
+  format?: string
   label?: string
   x: number
   y: number
@@ -368,8 +374,50 @@ function sanitizeEntity(state: HassState): FigmaEntity {
     state: String(state.state ?? ''),
     unit: stringAttribute(attributes.unit_of_measurement),
     domain: state.entity_id.includes('.') ? state.entity_id.split('.')[0] : null,
-    device_class: stringAttribute(attributes.device_class)
+    device_class: stringAttribute(attributes.device_class),
+    values: [
+      { path: 'state', label: 'State', value: primitiveValue(state.state) },
+      ...sanitizeAttributeValues(attributes)
+    ]
   }
+}
+
+function sanitizeAttributeValues(attributes: Record<string, unknown>): FigmaEntity['values'] {
+  const values: FigmaEntity['values'] = []
+  const visit = (value: unknown, path: string, depth: number): void => {
+    if (values.length >= 100 || depth > 4) return
+    if (isPrimitive(value)) {
+      values.push({ path, label: path.replace(/^attributes\./, ''), value })
+      return
+    }
+    if (Array.isArray(value)) {
+      value.slice(0, 8).forEach((entry, index) => visit(entry, `${path}.${index}`, depth + 1))
+      return
+    }
+    if (value && typeof value === 'object') {
+      Object.entries(value as Record<string, unknown>).slice(0, 40).forEach(([key, entry]) => {
+        if (isSensitiveAttributeKey(key) || ['friendly_name', 'unit_of_measurement', 'device_class'].includes(key)) return
+        visit(entry, `${path}.${key}`, depth + 1)
+      })
+    }
+  }
+  Object.entries(attributes).forEach(([key, value]) => {
+    if (isSensitiveAttributeKey(key) || ['friendly_name', 'unit_of_measurement', 'device_class'].includes(key)) return
+    visit(value, `attributes.${key}`, 1)
+  })
+  return values
+}
+
+function isSensitiveAttributeKey(key: string): boolean {
+  return /token|password|secret|credential|authorization|api[_-]?key/i.test(key)
+}
+
+function isPrimitive(value: unknown): value is string | number | boolean | null {
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value)
+}
+
+function primitiveValue(value: unknown): string | number | boolean | null {
+  return isPrimitive(value) ? value : String(value ?? '')
 }
 
 function stringAttribute(value: unknown): string | null {
@@ -379,11 +427,12 @@ function stringAttribute(value: unknown): string | null {
 function figmaLayoutToConfig(body: unknown, existing: LayoutConfig): LayoutConfig {
   const layout = validateFigmaLayout(body)
   const entities: Record<string, string> = {}
-  const items = layout.widgets.map((widget, index) => widgetToItem(widget, index, entities))
+  const selectors: Record<string, string> = {}
+  const items = layout.widgets.map((widget, index) => widgetToItem(widget, index, entities, selectors))
   return {
     ...existing,
     frame: { ...existing.frame, width: 800, height: 480 },
-    data: { ...existing.data, entities },
+    data: { ...existing.data, entities, ...(Object.keys(selectors).length ? { selectors } : { selectors: undefined }) },
     items
   }
 }
@@ -424,6 +473,12 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
   if (item.unit !== undefined && item.unit !== null && typeof item.unit !== 'string') {
     throw new FigmaLayoutError(`widget ${index} has invalid unit`)
   }
+  if (item.valuePath !== undefined && (typeof item.valuePath !== 'string' || !isSafeValuePath(item.valuePath))) {
+    throw new FigmaLayoutError(`widget ${index} has invalid valuePath`)
+  }
+  if (item.format !== undefined && (typeof item.format !== 'string' || !['', 'minutes', 'time', 'date'].includes(item.format))) {
+    throw new FigmaLayoutError(`widget ${index} has invalid format`)
+  }
   if (item.label !== undefined && typeof item.label !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid label`)
   if (item.staticText !== undefined && typeof item.staticText !== 'string') throw new FigmaLayoutError(`widget ${index} has invalid staticText`)
   if (item.weight !== undefined && !isSupportedFontWeight(item.weight)) {
@@ -444,9 +499,12 @@ function isSupportedFontWeight(weight: unknown): weight is number | string {
   return typeof weight === 'string' && ['normal', 'bold', 'bolder', 'lighter'].includes(weight)
 }
 
-function widgetToItem(widget: FigmaWidget, index: number, entities: Record<string, string>): LayoutItem {
-  const source = widget.entity ? uniqueSourceKey(widget.entity, entities) : undefined
+function widgetToItem(widget: FigmaWidget, index: number, entities: Record<string, string>, selectors: Record<string, string>): LayoutItem {
+  const selector = widget.valuePath && widget.valuePath !== 'state' ? widget.valuePath : undefined
+  const source = widget.entity ? uniqueSourceKey(widget.entity, selector, entities, selectors) : undefined
   if (source && widget.entity) entities[source] = widget.entity
+  if (source && selector) selectors[source] = selector
+  const placeholder = source ? `{{ ${source}${widget.format ? ` | ${widget.format}` : ''} }}` : ''
   const base = {
     id: uniqueItemId(widget.label || widget.entity || widget.staticText || widget.type, index),
     x: widget.x,
@@ -462,18 +520,24 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
       ...base,
       type: 'metric',
       label: widget.label || widget.entity || 'Metric',
-      value: source ? `{{ ${source} }}${widget.unit ?? ''}` : ''
+      value: source ? `${placeholder}${widget.unit ?? ''}` : ''
     }
   }
   return {
     ...base,
     type: 'text',
-    text: source ? `${widget.label || widget.entity}: {{ ${source} }}${widget.unit ?? ''}` : (widget.staticText || widget.label || 'Text')
+    text: source ? `${widget.label || widget.entity}: ${placeholder}${widget.unit ?? ''}` : (widget.staticText || widget.label || 'Text')
   }
 }
 
-function uniqueSourceKey(entityId: string, entities: Record<string, string>): string {
-  const existing = Object.entries(entities).find(([, existingEntityId]) => existingEntityId === entityId)
+function isSafeValuePath(path: string): boolean {
+  return path === 'state' || /^attributes(?:\.[a-zA-Z0-9_]+)+$/.test(path)
+}
+
+function uniqueSourceKey(entityId: string, selector: string | undefined, entities: Record<string, string>, selectors: Record<string, string>): string {
+  const existing = Object.entries(entities).find(([key, existingEntityId]) => {
+    return existingEntityId === entityId && selectors[key] === selector
+  })
   if (existing) return existing[0]
   const base = camelKey(entityId.replace(/^[^.]+\./, '')) || 'entity'
   let key = base

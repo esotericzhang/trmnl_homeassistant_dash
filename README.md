@@ -110,7 +110,7 @@ The layout schema is intentionally small:
 - `data.entities`: a map of local source keys to Home Assistant entity IDs, for example `kitchenTemperature: sensor.kitchen_temperature`.
 - `items`: positioned rendering blocks. Supported item types are `text`, `metric`, `forecast`, and `line`.
 
-`text` and `metric` items can interpolate entity source keys with `{{ key }}`. For example, a metric card uses `value: "{{ kitchenTemperature }}"` and the renderer looks up `data.entities.kitchenTemperature`, fetches that entity through Home Assistant, and draws the current state. Text items wrap at approximate character boundaries and are clipped to their configured width and height. `/screen.svg`, `/screen.png`, `/render`, and `/preview` all use the same renderer in `trmnl-ha-layout/src/render.ts`. `/screen.*?sample=1` and `/render?sample=1` use sample data instead of live Home Assistant data.
+`text` and `metric` items can interpolate entity source keys with `{{ key }}` and safe formatter filters such as `{{ minutesAsleep | minutes }}`. The `minutes` preset converts an integer minute value such as `417` to `6h 57m`; `time` and `date` presets are also available. Optional `data.selectors` entries choose a sanitized state/attribute path for a source, for example `weatherTemperature: attributes.forecast.0.temperature`. Layouts without selectors continue to use the entity state exactly as before. Text items wrap at approximate character boundaries and are clipped to their configured width and height. `/screen.svg`, `/screen.png`, `/render`, and `/preview` all use the same renderer in `trmnl-ha-layout/src/render.ts`. `/screen.*?sample=1` and `/render?sample=1` use sample data instead of live Home Assistant data.
 
 The Figma workflow exports into this existing schema. It does not introduce a second layout format: Figma text becomes bounded, wrapping `text` items, Figma cards become `metric` items, and bound Home Assistant entity IDs become `data.entities` entries. Sanitized entity units are preserved in exported value templates.
 
@@ -138,7 +138,7 @@ npm run build
 
 In Figma Desktop, choose **Plugins -> Development -> Import plugin from manifest**, then select `figma-plugin/manifest.json`.
 
-The manifest allows local development URLs `http://localhost:10000` and `http://127.0.0.1:10000`. If the dashboard backend runs on another LAN host, edit `figma-plugin/manifest.json` before importing and add that exact origin, for example `http://raspberrypi.local:10000` or `http://192.168.86.40:10000`, under `networkAccess.allowedDomains`. Figma's plugin network-access model requires explicit allowed domains; published plugins cannot generally allow arbitrary private LAN hosts without review constraints, so this plugin is intended for local development/import.
+The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDomains`; local/development servers should not be placed in `allowedDomains`. Figma rejects some loopback and numeric-IP patterns during manifest import, so use `localhost` for same-machine testing. If the dashboard backend runs on another LAN host, edit `figma-plugin/manifest.json` before importing and add the exact hostname origin, for example `http://raspberrypi.local:10000`, to `networkAccess.devAllowedDomains`. Figma's plugin network-access model requires explicit development domains; published plugins cannot generally allow arbitrary private LAN hosts without review constraints, so this plugin is intended for local development/import.
 
 ### Design and export
 
@@ -146,14 +146,16 @@ The manifest allows local development URLs `http://localhost:10000` and `http://
 2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
 3. If the backend has `SETTINGS_TOKEN` or add-on `settings_token` configured, enter the same value in **Dashboard Token** and click **Save**. The plugin sends it as `Authorization: Bearer <token>` for protected bridge calls. Leave it blank for local no-token development.
 4. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
-5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The plugin receives only sanitized entity metadata: entity ID, friendly name, state, unit, domain, and device class. It never receives Home Assistant credentials.
-6. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
-7. Use **Insert Card** for a simple grayscale metric card with label and large value.
-8. Move and resize the Figma nodes inside the 800x480 frame.
-9. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update bound text/card values where possible. User-edited text and card labels are preserved while bound values refresh.
-10. Click **Export Selected Frame**. The plugin traverses visible supported nodes, skips its guide label, converts them to the dashboard layout schema, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
-11. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, `items`) into the existing YAML config.
-12. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
+5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The status says whether the result is **live** Home Assistant data or **sample** fallback data. The plugin receives only sanitized entity metadata and bounded primitive state/attribute values; credential-like attributes are omitted and Home Assistant credentials are never returned.
+6. In an entity row, choose **Value**. `State` uses the normal entity state. Attribute-rich entities expose paths such as `forecast.0.temperature`, `forecast.0.condition`, or other sanitized primitive attributes. Forecast arrays expose the first eight entries where feasible.
+7. Choose **Format**: `Raw`, `Minutes → hours/minutes`, `Time`, or `Date`. For `sensor.google_health_sleep_latest_minutes_asleep`, select `State` plus `Minutes → hours/minutes` to preview and save `417` as `6h 57m`.
+8. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
+9. Use **Insert Card** for a simple grayscale metric card with label and large value.
+10. Move and resize the Figma nodes inside the 800x480 frame.
+11. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update the selected state/attribute value using its saved format. User-edited text and card labels are preserved.
+12. Click **Export Selected Frame**. The plugin traverses visible supported nodes, skips its guide label, converts bindings to `data.entities`, optional `data.selectors`, and safe formatter templates, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
+13. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, optional `data.selectors`, and `items`) into the existing YAML config.
+14. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
 If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities and mutating Figma saves require the matching dashboard token in the plugin. If no token is configured, leave **Dashboard Token** blank; the plugin sends no `Authorization` header and preserves local/dev no-auth behavior.
 
@@ -176,6 +178,9 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - If `SETTINGS_TOKEN` is configured, save the same value in **Dashboard Token** before loading entities or saving the dashboard.
 - Create an 800x480 TRMNL frame.
 - Load entities and verify no Home Assistant token appears in plugin output, plugin data, browser console, or exported JSON.
+- Verify the status identifies the entity source as `live` or `sample`. If it says `sample`, configure `HOME_ASSISTANT_URL` and `ACCESS_TOKEN` (or save the HA token in `/editor`) before testing actual attributes.
+- For a minute sensor, choose `State` and `Minutes → hours/minutes`; verify `417` previews and renders as `6h 57m`.
+- For an attribute-rich weather sensor, choose a path such as `forecast.0.temperature` or `forecast.0.condition` and verify the selected attribute is used instead of the raw `forecast` state string.
 - Insert text and card elements for an entity.
 - Move and resize inserted elements inside the frame.
 - Refresh selected bound elements after reloading entities.
@@ -215,7 +220,7 @@ If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities an
 - `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
-- `GET /api/figma/entities`: returns sanitized entity metadata for the local Figma plugin. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured and does not expose Home Assistant credentials.
+- `GET /api/figma/entities`: returns `{ source: "live" | "sample", entities }` for the local Figma plugin. Each entity includes sanitized primitive state/attribute value paths; credential-like attribute keys and Home Assistant credentials are omitted. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
 - `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
 - `PUT /api/figma/layout`: accepts `{ width: 800, height: 480, widgets }`, validates supported `text` and `metric_card` widgets and their in-frame geometry, then replaces `data.entities` and `items` in the existing YAML layout while preserving the other layout settings.
 - `GET /api/settings`: returns GUI settings with tokens masked.

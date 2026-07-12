@@ -26,4 +26,19 @@ describe('HomeAssistantClient', () => {
     expect(path).toBe('http://ha.local:8123/api/states')
     expect(states[0].entity_id).toBe('sensor.temp')
   })
+
+  it('collects a selected attribute path for rendering', async () => {
+    const fetcher = (async () => new Response(JSON.stringify({
+      entity_id: 'sensor.weather',
+      state: 'forecast',
+      attributes: { forecast: [{ temperature: 61 }] }
+    }), { status: 200 })) as typeof fetch
+    const client = new HomeAssistantClient('http://ha.local:8123', 'secret', fetcher)
+    const data = await client.collect({
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.weather' }, selectors: { temperature: 'attributes.forecast.0.temperature' } },
+      items: []
+    })
+    expect(data.values.temperature).toBe(61)
+  })
 })

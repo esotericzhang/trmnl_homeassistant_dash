@@ -5,7 +5,7 @@
   <style>
     *{box-sizing:border-box}body{margin:0;padding:14px;font:12px Inter,system-ui,sans-serif;color:var(--figma-color-text,#111);background:var(--figma-color-bg,#fff)}
     h1{font-size:16px;margin:0 0 10px}h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;color:var(--figma-color-text-secondary,#555)}
-    label{display:block;font-weight:600;margin:8px 0 4px}input{width:100%;border:1px solid var(--figma-color-border,#ccc);border-radius:5px;padding:8px;background:var(--figma-color-bg,#fff);color:inherit}
+    label{display:block;font-weight:600;margin:8px 0 4px}input,select{width:100%;border:1px solid var(--figma-color-border,#ccc);border-radius:5px;padding:8px;background:var(--figma-color-bg,#fff);color:inherit}
     button{border:1px solid var(--figma-color-border,#bbb);background:var(--figma-color-bg-secondary,#f5f5f5);border-radius:5px;padding:7px 9px;cursor:pointer;color:inherit}button.primary{background:#111;color:white;border-color:#111}button:disabled{opacity:.45;cursor:not-allowed}
     .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.status{white-space:pre-wrap;border:1px solid var(--figma-color-border,#ddd);border-radius:6px;padding:8px;min-height:36px;background:var(--figma-color-bg-secondary,#f7f7f7)}
     .entities{border:1px solid var(--figma-color-border,#ddd);border-radius:6px;max-height:210px;overflow:auto}.entity{padding:8px;border-bottom:1px solid var(--figma-color-border,#eee)}.entity:last-child{border-bottom:0}.entity strong{display:block}.muted{color:var(--figma-color-text-secondary,#666)}.actions{display:flex;gap:6px;margin-top:7px}.actions button{flex:0 0 auto}
@@ -33,6 +33,7 @@
   <script>
     const $ = id => document.getElementById(id);
     let entities = [];
+    let entitySource = 'unknown';
     let exportedLayout = null;
     const status = message => { $('status').textContent = message; };
     const backend = () => $('backend-url').value.trim().replace(/\/$/, '') || 'http://localhost:10000';
@@ -41,9 +42,20 @@
     function renderEntities() {
       const q = $('search').value.trim().toLowerCase();
       const shown = entities.filter(e => [e.entity_id,e.name,e.state,e.domain].join(' ').toLowerCase().includes(q)).slice(0, 100);
-      $('entities').innerHTML = shown.length ? shown.map((e, i) => '<div class="entity"><strong>'+esc(e.name || e.entity_id)+'</strong><div class="muted">'+esc(e.entity_id)+' · '+esc(e.state || '')+esc(e.unit || '')+'</div><div class="actions"><button data-text="'+i+'">Insert Text</button><button data-card="'+i+'">Insert Card</button></div></div>').join('') : '<div class="entity muted">No entities loaded or matched.</div>';
-      document.querySelectorAll('[data-text]').forEach(btn => btn.onclick = () => send({ type:'insert-text', entity: shown[Number(btn.dataset.text)] }));
-      document.querySelectorAll('[data-card]').forEach(btn => btn.onclick = () => send({ type:'insert-card', entity: shown[Number(btn.dataset.card)] }));
+      $('entities').innerHTML = shown.length ? shown.map((e, i) => {
+        const values = Array.isArray(e.values) && e.values.length ? e.values : [{path:'state',label:'State',value:e.state}];
+        const options = values.map(v => '<option value="'+esc(v.path)+'">'+esc(v.label)+' · '+esc(String(v.value).slice(0,80))+'</option>').join('');
+        return '<div class="entity"><strong>'+esc(e.name || e.entity_id)+'</strong><div class="muted">'+esc(e.entity_id)+' · '+esc(e.state || '')+esc(e.unit || '')+'</div><label>Value</label><select data-value="'+i+'">'+options+'</select><label>Format</label><select data-format="'+i+'"><option value="">Raw</option><option value="minutes">Minutes → hours/minutes</option><option value="time">Time</option><option value="date">Date</option></select><div class="actions"><button data-text="'+i+'">Insert Text</button><button data-card="'+i+'">Insert Card</button></div></div>';
+      }).join('') : '<div class="entity muted">No entities loaded or matched.</div>';
+      const configured = i => {
+        const entity = Object.assign({}, shown[i]);
+        entity.value_path = document.querySelector('[data-value="'+i+'"]').value;
+        entity.format = document.querySelector('[data-format="'+i+'"]').value;
+        if (entity.value_path !== 'state') entity.unit = null;
+        return entity;
+      };
+      document.querySelectorAll('[data-text]').forEach(btn => btn.onclick = () => send({ type:'insert-text', entity: configured(Number(btn.dataset.text)) }));
+      document.querySelectorAll('[data-card]').forEach(btn => btn.onclick = () => send({ type:'insert-card', entity: configured(Number(btn.dataset.card)) }));
     }
     async function fetchJson(url, options) {
       const headers = Object.assign({}, options && options.headers ? options.headers : {}, dashboardToken() ? { Authorization: 'Bearer ' + dashboardToken() } : {});
@@ -60,8 +72,9 @@
       status('Loading entities...');
       const json = await fetchJson(backend() + '/api/figma/entities');
       entities = Array.isArray(json.entities) ? json.entities : [];
+      entitySource = json.source || 'unknown';
       renderEntities();
-      status('Loaded '+entities.length+' sanitized entities. HA tokens are never sent to this plugin.');
+      status('Loaded '+entities.length+' sanitized entities from '+entitySource+' data. HA tokens are never sent to this plugin.');
     }
     async function saveDashboard() {
       if (!exportedLayout) return;

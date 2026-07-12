@@ -10,7 +10,10 @@ export interface FrameConfig {
 
 export interface LayoutConfig {
   frame: FrameConfig
-  data: { entities: Record<string, string> }
+  data: {
+    entities: Record<string, string>
+    selectors?: Record<string, string>
+  }
   items: LayoutItem[]
 }
 
@@ -73,6 +76,6 @@ export interface HassState {
 export type HassStateMap = Record<string, HassState>
 
 export interface RenderData {
-  values: Record<string, string | number | null | undefined>
+  values: Record<string, unknown>
   states: HassStateMap
 }

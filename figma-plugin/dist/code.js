@@ -142,20 +142,21 @@ async function refreshSelected(entities) {
             const entity = byId.get(binding.entity_id);
             if (!entity)
                 continue;
-            bound.setPluginData('unit', entity.unit ?? '');
+            bound.setPluginData('unit', binding.value_path === 'state' ? (entity.unit ?? '') : '');
             if (bound.type === 'TEXT') {
                 if (binding.binding_type === 'metric_value')
-                    bound.characters = entityValue(entity);
+                    bound.characters = entityValue(entityForBinding(entity, binding));
                 else if (binding.binding_type === 'metric_label')
                     continue;
                 else if (binding.binding_type === 'text') {
-                    const value = entityValue(entity);
+                    const configured = entityForBinding(entity, binding);
+                    const value = entityValue(configured);
                     const label = boundTextLabel(bound, entity.entity_id, value);
                     bound.characters = `${label}: ${value}`;
                     setBoundTextMetadata(bound, label, value);
                 }
                 else
-                    bound.characters = entityValue(entity);
+                    bound.characters = entityValue(entityForBinding(entity, binding));
                 updated++;
             }
         }
@@ -232,13 +233,15 @@ function exportNode(node, frame, warnings) {
         return null;
     }
     if (binding?.widget_type === 'metric_card') {
-        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 };
+        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 };
     }
     if (node.type === 'TEXT') {
         return {
             type: 'text',
             entity: binding?.entity_id,
             unit: binding?.unit,
+            valuePath: binding?.value_path,
+            format: binding?.format,
             label: binding ? textLabel(node, binding.entity_id) : undefined,
             staticText: binding ? undefined : node.characters,
             fontSize: typeof node.fontSize === 'number' ? node.fontSize : undefined,
@@ -311,6 +314,8 @@ function setBinding(node, entity, bindingType) {
     node.setPluginData('binding_type', bindingType);
     node.setPluginData('widget_type', bindingType);
     node.setPluginData('unit', entity.unit ?? '');
+    node.setPluginData('value_path', entity.value_path ?? 'state');
+    node.setPluginData('format', entity.format ?? '');
 }
 function setBoundTextMetadata(node, label, value) {
     node.setPluginData('bound_text_label', label);
@@ -326,7 +331,9 @@ function readBinding(node) {
         entity_id: entityId,
         binding_type: node.getPluginData('binding_type'),
         widget_type: node.getPluginData('widget_type'),
-        unit: node.getPluginData('unit') || null
+        unit: node.getPluginData('unit') || null,
+        value_path: node.getPluginData('value_path') || 'state',
+        format: node.getPluginData('format') || ''
     };
 }
 function cardLabel(node, fallback) {
@@ -392,7 +399,31 @@ function entityLine(entity) {
     return `${entity.name || entity.entity_id}: ${entityValue(entity)}`;
 }
 function entityValue(entity) {
-    return `${entity.state}${entity.unit ?? ''}`;
+    const path = entity.value_path ?? 'state';
+    const selected = entity.values?.find(value => value.path === path)?.value ?? entity.state;
+    const formatted = formatEntityValue(selected, entity.format);
+    return `${formatted}${path === 'state' ? (entity.unit ?? '') : ''}`;
+}
+function entityForBinding(entity, binding) {
+    return { ...entity, value_path: binding.value_path, format: binding.format };
+}
+function formatEntityValue(value, format) {
+    if (format === 'minutes') {
+        const minutes = Number(value);
+        if (Number.isFinite(minutes)) {
+            const hours = Math.floor(minutes / 60);
+            return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes % 60}m`;
+        }
+    }
+    if (format === 'time' || format === 'date') {
+        const date = new Date(String(value));
+        if (!Number.isNaN(date.getTime())) {
+            return format === 'time'
+                ? new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date)
+                : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
+        }
+    }
+    return String(value ?? '');
 }
 function blackFill() {
     return [{ type: 'SOLID', color: { r: 0.05, g: 0.05, b: 0.05 } }];

@@ -28,7 +28,7 @@ export class HomeAssistantClient {
       Object.entries(config.data.entities).map(async ([key, entity]) => [key, await this.getState(entity)] as const)
     )
     const states: HassStateMap = Object.fromEntries(entries)
-    const values = Object.fromEntries(entries.map(([key, state]) => [key, state.state]))
+    const values = Object.fromEntries(entries.map(([key, state]) => [key, selectStateValue(state, config.data.selectors?.[key])]))
     return { values, states }
   }
 }
@@ -50,7 +50,29 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
       { datetime: '2026-06-24T15:00:00-07:00', temperature: 74, condition: 'cloudy' }
     ]
   }
-  return { values: Object.fromEntries(Object.entries(states).map(([key, state]) => [key, state.state])), states }
+  return {
+    values: Object.fromEntries(Object.entries(states).map(([key, state]) => [key, selectStateValue(state, config.data.selectors?.[key])])),
+    states
+  }
+}
+
+export function selectStateValue(state: HassState, path = 'state'): unknown {
+  if (path === 'state') return state.state
+  const segments = path.split('.')
+  let value: unknown = state
+  for (const segment of segments) {
+    if (!segment || !/^[a-zA-Z0-9_]+$/.test(segment)) return undefined
+    if (Array.isArray(value)) {
+      const index = Number(segment)
+      if (!Number.isInteger(index) || index < 0 || index >= value.length) return undefined
+      value = value[index]
+    } else if (value && typeof value === 'object') {
+      value = (value as Record<string, unknown>)[segment]
+    } else {
+      return undefined
+    }
+  }
+  return value
 }
 
 function sampleValue(key: string): string {
