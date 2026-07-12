@@ -371,7 +371,9 @@ describe('figma bridge routes', () => {
           attributes: { friendly_name: 'Access code', current: 1234, status: '1234' }
         },
         { entity_id: 'sensor.door_pin', state: '7391', attributes: { friendly_name: 'Door PIN', native_value: 7391 } },
-        { entity_id: 'sensor.api_credential', state: 'opaque-value', attributes: { device_class: 'temperature', status: 'opaque-value' } }
+        { entity_id: 'sensor.api_credential', state: 'opaque-value', attributes: { device_class: 'temperature', status: 'opaque-value' } },
+        { entity_id: 'sensor.github_pat', state: 'ghp_1234567890abcdefghijklmnop', attributes: {} },
+        { entity_id: 'sensor.build_identifier', state: 'aB3dE5fG7hJ9kL1mN3pQ5rS7', attributes: {} }
       ]), { status: 200 })
     }) as typeof fetch
 
@@ -391,8 +393,26 @@ describe('figma bridge routes', () => {
         values: [{ path: 'state', label: 'State', value: '—' }]
       },
       {
+        entity_id: 'sensor.build_identifier',
+        name: 'sensor.build_identifier',
+        state: '—',
+        unit: null,
+        domain: 'sensor',
+        device_class: null,
+        values: [{ path: 'state', label: 'State', value: '—' }]
+      },
+      {
         entity_id: 'sensor.door_pin',
         name: 'sensor.door_pin',
+        state: '—',
+        unit: null,
+        domain: 'sensor',
+        device_class: null,
+        values: [{ path: 'state', label: 'State', value: '—' }]
+      },
+      {
+        entity_id: 'sensor.github_pat',
+        name: 'sensor.github_pat',
         state: '—',
         unit: null,
         domain: 'sensor',
@@ -590,7 +610,8 @@ describe('figma bridge routes', () => {
     ['weight object', { weight: { invalid: true } }],
     ['weight injection', { weight: '" onload="alert(1)' }],
     ['weight out of range', { weight: 1001 }],
-    ['rounded fontSize', { fontSize: 0.4 }]
+    ['rounded fontSize', { fontSize: 0.4 }],
+    ['oversized fontSize', { fontSize: 481 }]
   ])('PUT /api/figma/layout rejects invalid %s fields', async (_field, invalid) => {
     const res = await fetch(`${baseUrl}/api/figma/layout`, {
       method: 'PUT',

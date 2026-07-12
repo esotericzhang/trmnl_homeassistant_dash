@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
   getAddonOptions,
+  isSafeValuePath,
   LayoutConfigError,
   loadLayoutConfig,
   loadSettings,
@@ -385,7 +386,7 @@ function sanitizeEntity(state: HassState): FigmaEntity {
 function isSecretLikeEntity(state: HassState): boolean {
   const objectId = state.entity_id.split('.').slice(1).join('.')
   const deviceClass = typeof state.attributes?.device_class === 'string' ? state.attributes.device_class : ''
-  return /(?:^|_)(?:access|api|auth|code|cookie|credential|key|passcode|password|pin|secret|session|token|webhook)(?:_|$)/i.test(objectId)
+  return /(?:^|_)(?:access|api|auth|bearer|code|cookie|credential|jwt|key|oauth|passcode|password|pat|pin|secret|session|token|webhook)(?:_|$)/i.test(objectId)
     || /^(?:code|key|password|secret|token)$/i.test(deviceClass)
 }
 
@@ -443,6 +444,9 @@ function sanitizePrimitive(value: unknown): string | number | boolean | null | u
   if (normalized.length > 256 || [...normalized].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) return undefined
   if (/^(?:https?|wss?):\/\//i.test(normalized)) return undefined
   if (/^(?:bearer\s+|eyJ[a-zA-Z0-9_-]*\.)/i.test(normalized)) return undefined
+  if (/^(?:gh[oprsu]_|github_pat_|glpat-|sk-(?:live|test)-|xox[baprs]-|AKIA)[a-zA-Z0-9_-]+$/i.test(normalized)) return undefined
+  if (normalized.length >= 24 && !/\s/.test(normalized) && /[a-z]/i.test(normalized) && /\d/.test(normalized)
+    && /^[a-zA-Z0-9_+/=-]+$/.test(normalized)) return undefined
   if (/[?&](?:access_token|auth|code|credential|key|password|pin|secret|session|signature|token|webhook)=/i.test(normalized)) return undefined
   if (/^(?:access_token|auth|code|cookie|credential|key|password|pin|secret|session|token|webhook)[:=]/i.test(normalized)) return undefined
   return value
@@ -512,7 +516,7 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
     throw new FigmaLayoutError(`widget ${index} has invalid weight`)
   }
   if (item.type === 'metric_card' && !item.entity) throw new FigmaLayoutError(`widget ${index} metric_card requires entity`)
-  if (normalized.fontSize !== undefined && (!Number.isFinite(normalized.fontSize) || normalized.fontSize < 1)) {
+  if (normalized.fontSize !== undefined && (!Number.isFinite(normalized.fontSize) || normalized.fontSize < 1 || normalized.fontSize > 480)) {
     throw new FigmaLayoutError(`widget ${index} has invalid fontSize`)
   }
   if (item.align !== undefined && !['left', 'center', 'right'].includes(item.align)) {
@@ -568,9 +572,6 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   }
 }
 
-function isSafeValuePath(path: string): boolean {
-  return path === 'state' || /^attributes(?:\.[a-zA-Z0-9_]+)+$/.test(path)
-}
 
 function uniqueSourceKey(entityId: string, selector: string | undefined, entities: Record<string, string>, selectors: Record<string, string>): string {
   const existing = Object.entries(entities).find(([key, existingEntityId]) => {

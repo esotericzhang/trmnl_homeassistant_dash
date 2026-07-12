@@ -1,4 +1,5 @@
 import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.js'
+import { isSafeValuePath } from './config.js'
 
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
@@ -79,6 +80,7 @@ function sampleForecast(): Array<Record<string, unknown>> {
 }
 
 export function selectStateValue(state: HassState, path = 'state'): unknown {
+  if (!isSafeValuePath(path)) return undefined
   if (path === 'state') return state.state
   const segments = path.split('.')
   let value: unknown = state
@@ -89,6 +91,7 @@ export function selectStateValue(state: HassState, path = 'state'): unknown {
       if (!Number.isInteger(index) || index < 0 || index >= value.length) return undefined
       value = value[index]
     } else if (value && typeof value === 'object') {
+      if (!Object.hasOwn(value, segment)) return undefined
       value = (value as Record<string, unknown>)[segment]
     } else {
       return undefined

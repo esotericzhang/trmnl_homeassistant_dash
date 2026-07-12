@@ -75,8 +75,12 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     && Object.values(value as Record<string, unknown>).every(entry => typeof entry === 'string')
 }
 
-function isSafeValuePath(value: string): boolean {
-  return value === 'state' || /^attributes(?:\.[a-zA-Z0-9_]+)+$/.test(value)
+const UNSAFE_VALUE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype', 'toString', 'valueOf'])
+
+export function isSafeValuePath(value: string): boolean {
+  if (value === 'state') return true
+  if (!/^attributes(?:\.[a-zA-Z0-9_]+)+$/.test(value)) return false
+  return value.split('.').every(segment => !UNSAFE_VALUE_PATH_SEGMENTS.has(segment))
 }
 
 function validateItem(item: LayoutItem): void {

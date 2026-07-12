@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HomeAssistantClient, sampleRenderData } from '../src/homeAssistant.js'
+import { HomeAssistantClient, sampleRenderData, selectStateValue } from '../src/homeAssistant.js'
 
 describe('HomeAssistantClient', () => {
   it('fetches an entity state with bearer auth', async () => {
@@ -77,5 +77,17 @@ describe('HomeAssistantClient', () => {
     })
 
     expect(data.values.kitchenTemperature).toBe('42')
+  })
+
+  it.each(['attributes.constructor', 'attributes.__proto__', 'attributes.toString'])(
+    'rejects prototype-sensitive selector %s',
+    (path) => {
+      expect(selectStateValue({ entity_id: 'sensor.test', state: '42', attributes: {} }, path)).toBeUndefined()
+    }
+  )
+
+  it('does not traverse inherited selector properties', () => {
+    const attributes = Object.create({ temperature: 72 }) as Record<string, unknown>
+    expect(selectStateValue({ entity_id: 'sensor.test', state: '42', attributes }, 'attributes.temperature')).toBeUndefined()
   })
 })

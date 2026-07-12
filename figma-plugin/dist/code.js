@@ -231,7 +231,12 @@ function exportNode(node, frame, warnings) {
         return null;
     }
     if (binding?.widget_type === 'metric_card') {
-        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: metricValueFontSize(node) ?? 30 };
+        const parts = metricCardParts(node);
+        if (!parts) {
+            warnings.push(`${node.name}: skipped because its bound label or value is missing, hidden, transparent, or clipped.`);
+            return null;
+        }
+        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: parts.label.characters, ...bounds, fontSize: typeof parts.value.fontSize === 'number' ? parts.value.fontSize : 30 };
     }
     if (node.type === 'TEXT') {
         const label = binding ? textLabel(node, binding.entity_id) : undefined;
@@ -420,14 +425,6 @@ function readBinding(node) {
         format: node.getPluginData('format') || ''
     };
 }
-function cardLabel(node, fallback) {
-    if ('children' in node) {
-        const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
-        if (label?.type === 'TEXT')
-            return label.characters;
-    }
-    return fallback;
-}
 function textLabel(node, fallback) {
     const storedValue = node.getPluginData('bound_text_value');
     if (storedValue && !boundTextLabelFromSuffix(node.characters, storedValue))
@@ -454,11 +451,19 @@ function boundTextLabelFromSuffix(current, value) {
         return '';
     return current.slice(0, -suffix.length).trim();
 }
-function metricValueFontSize(node) {
-    if (!('children' in node))
-        return undefined;
+function metricCardParts(node) {
+    if (!('children' in node) || !node.absoluteBoundingBox)
+        return null;
+    const label = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
     const value = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value');
-    return value?.type === 'TEXT' && typeof value.fontSize === 'number' ? value.fontSize : undefined;
+    if (label?.type !== 'TEXT' || value?.type !== 'TEXT')
+        return null;
+    if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox))
+        return null;
+    return { label, value };
+}
+function isVisibleMetricPart(node, cardBounds) {
+    return node.visible && node.opacity > 0.001 && Boolean(node.absoluteBoundingBox) && !isClipped(node, cardBounds);
 }
 function alignFor(node) {
     if (node.textAlignHorizontal === 'CENTER')
