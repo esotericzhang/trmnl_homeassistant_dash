@@ -209,7 +209,7 @@ async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
       if (!binding) continue
       const entity = byId.get(binding.entity_id)
       if (!entity) continue
-      bound.setPluginData('unit', binding.format ? '' : (entity.unit ?? ''))
+      bound.setPluginData('unit', binding.unit ?? '')
       if (bound.type === 'TEXT') {
         await loadTextNodeFonts(bound)
         if (binding.binding_type === 'metric_value') bound.characters = entityValue(entityForBinding(entity, binding))
@@ -233,6 +233,9 @@ function exportSelectedFrame(): void {
   const warnings: string[] = []
   const widgets: ExportedWidget[] = []
   if (hasUnrepresentableTransformInAncestorChain(frame)) throw new Error('Export frame or one of its ancestors cannot be rotated, skewed, scaled, or flipped.')
+  const frameState = effectiveFrameState(frame)
+  if (!frameState.visible) throw new Error('Export frame or one of its ancestors is hidden.')
+  if (frameState.opacity < 0.999) throw new Error('Export frame or one of its ancestors has opacity that cannot be represented.')
   const frameBounds = frame.absoluteBoundingBox
   if (!frameBounds) throw new Error('Export frame bounds could not be read.')
   const clip = ancestorClipBounds(frame, frameBounds)
@@ -420,6 +423,18 @@ function ancestorClipBounds(node: SceneNode, initial: Bounds): Bounds | null {
     parent = parent.parent
   }
   return clip
+}
+
+function effectiveFrameState(node: SceneNode): { visible: boolean; opacity: number } {
+  let visible = true
+  let opacity = 1
+  let current: BaseNode | null = node
+  while (current && current.type !== 'PAGE') {
+    if ('visible' in current && !current.visible) visible = false
+    if ('opacity' in current) opacity *= current.opacity
+    current = current.parent
+  }
+  return { visible, opacity }
 }
 
 function isUnsupportedVisualNode(node: SceneNode): boolean {
@@ -709,8 +724,8 @@ function entityValue(entity: FigmaEntity): string {
   return `${formatted}${unit}`
 }
 
-function entityForBinding(entity: FigmaEntity, binding: { value_path: string; format: string }): FigmaEntity {
-  return { ...entity, value_path: binding.value_path, format: binding.format as FigmaEntity['format'] }
+function entityForBinding(entity: FigmaEntity, binding: { value_path: string; format: string; unit: string | null }): FigmaEntity {
+  return { ...entity, unit: binding.unit ?? undefined, value_path: binding.value_path, format: binding.format as FigmaEntity['format'] }
 }
 
 function formatEntityValue(value: unknown, format?: string): string {

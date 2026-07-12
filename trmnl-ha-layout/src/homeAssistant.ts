@@ -1,6 +1,9 @@
 import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.js'
 import { isSafeValuePath } from './config.js'
 
+const STATES_TIMEOUT_MS = 10_000
+const MAX_STATES = 10_000
+
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
 
@@ -18,10 +21,15 @@ export class HomeAssistantClient {
     if (!this.token) throw new Error('Missing Home Assistant token')
     const url = new URL('/api/states', this.baseUrl)
     const response = await this.fetcher(url, {
-      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(STATES_TIMEOUT_MS)
     })
     if (!response.ok) throw new Error(`Home Assistant states failed: ${response.status}`)
-    return response.json() as Promise<HassState[]>
+    const states: unknown = await response.json()
+    if (!Array.isArray(states)) throw new Error('Home Assistant states response must be an array')
+    if (states.length > MAX_STATES) throw new Error(`Home Assistant states response exceeds ${MAX_STATES} entities`)
+    if (!states.every(isHassState)) throw new Error('Home Assistant states response contains an invalid entity')
+    return states
   }
 
   async collect(config: LayoutConfig): Promise<RenderData> {
@@ -33,6 +41,16 @@ export class HomeAssistantClient {
     const values = Object.fromEntries(entries.map(([key, state]) => [key, selectStateValue(state, config.data.selectors?.[key])]))
     return { values, states }
   }
+}
+
+function isHassState(value: unknown): value is HassState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const state = value as Record<string, unknown>
+  return typeof state.entity_id === 'string'
+    && typeof state.state === 'string'
+    && !!state.attributes
+    && typeof state.attributes === 'object'
+    && !Array.isArray(state.attributes)
 }
 
 export function sampleRenderData(config: LayoutConfig): RenderData {

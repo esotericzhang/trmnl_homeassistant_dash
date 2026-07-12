@@ -27,6 +27,30 @@ describe('HomeAssistantClient', () => {
     expect(states[0].entity_id).toBe('sensor.temp')
   })
 
+  it('bounds and validates the all-states response', async () => {
+    const invalidClient = new HomeAssistantClient('http://ha.local:8123', 'secret', (async () =>
+      new Response(JSON.stringify({ entity_id: 'sensor.temp' }), { status: 200 })) as typeof fetch)
+    await expect(invalidClient.getStates()).rejects.toThrow('must be an array')
+
+    const malformedClient = new HomeAssistantClient('http://ha.local:8123', 'secret', (async () =>
+      new Response(JSON.stringify([{ entity_id: 'sensor.temp', state: 72, attributes: {} }]), { status: 200 })) as typeof fetch)
+    await expect(malformedClient.getStates()).rejects.toThrow('invalid entity')
+
+    const oversizedClient = new HomeAssistantClient('http://ha.local:8123', 'secret', (async () =>
+      new Response(JSON.stringify(Array.from({ length: 10_001 }, (_, index) => ({ entity_id: `sensor.${index}`, state: '0', attributes: {} }))), { status: 200 })) as typeof fetch)
+    await expect(oversizedClient.getStates()).rejects.toThrow('exceeds 10000 entities')
+  })
+
+  it('applies a timeout signal to the all-states request', async () => {
+    let signal: AbortSignal | null | undefined
+    const client = new HomeAssistantClient('http://ha.local:8123', 'secret', (async (_url, init) => {
+      signal = init?.signal
+      return new Response(JSON.stringify([]), { status: 200 })
+    }) as typeof fetch)
+    await client.getStates()
+    expect(signal).toBeInstanceOf(AbortSignal)
+  })
+
   it('collects a selected attribute path for rendering', async () => {
     const fetcher = (async () => new Response(JSON.stringify({
       entity_id: 'sensor.weather',

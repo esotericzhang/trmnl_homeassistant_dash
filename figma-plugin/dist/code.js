@@ -151,7 +151,7 @@ async function refreshSelected(entities) {
             const entity = byId.get(binding.entity_id);
             if (!entity)
                 continue;
-            bound.setPluginData('unit', binding.format ? '' : (entity.unit ?? ''));
+            bound.setPluginData('unit', binding.unit ?? '');
             if (bound.type === 'TEXT') {
                 await loadTextNodeFonts(bound);
                 if (binding.binding_type === 'metric_value')
@@ -179,6 +179,11 @@ function exportSelectedFrame() {
     const widgets = [];
     if (hasUnrepresentableTransformInAncestorChain(frame))
         throw new Error('Export frame or one of its ancestors cannot be rotated, skewed, scaled, or flipped.');
+    const frameState = effectiveFrameState(frame);
+    if (!frameState.visible)
+        throw new Error('Export frame or one of its ancestors is hidden.');
+    if (frameState.opacity < 0.999)
+        throw new Error('Export frame or one of its ancestors has opacity that cannot be represented.');
     const frameBounds = frame.absoluteBoundingBox;
     if (!frameBounds)
         throw new Error('Export frame bounds could not be read.');
@@ -379,6 +384,19 @@ function ancestorClipBounds(node, initial) {
         parent = parent.parent;
     }
     return clip;
+}
+function effectiveFrameState(node) {
+    let visible = true;
+    let opacity = 1;
+    let current = node;
+    while (current && current.type !== 'PAGE') {
+        if ('visible' in current && !current.visible)
+            visible = false;
+        if ('opacity' in current)
+            opacity *= current.opacity;
+        current = current.parent;
+    }
+    return { visible, opacity };
 }
 function isUnsupportedVisualNode(node) {
     if (readBinding(node))
@@ -679,7 +697,7 @@ function entityValue(entity) {
     return `${formatted}${unit}`;
 }
 function entityForBinding(entity, binding) {
-    return { ...entity, value_path: binding.value_path, format: binding.format };
+    return { ...entity, unit: binding.unit ?? undefined, value_path: binding.value_path, format: binding.format };
 }
 function formatEntityValue(value, format) {
     if (value === null || value === undefined || value === 'unknown' || value === 'unavailable')
