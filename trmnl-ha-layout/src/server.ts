@@ -321,7 +321,10 @@ app.use((error: unknown, req: express.Request, res: express.Response, next: expr
   const message = error instanceof Error ? error.message : String(error)
   const isClientLayoutError = error instanceof FigmaLayoutError
     || (error instanceof LayoutConfigError && req.method === 'PUT' && req.path === '/api/config')
-  const status = isClientLayoutError ? 400 : 500
+  const errorStatus = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
+    ? error.status
+    : undefined
+  const status = isClientLayoutError ? 400 : errorStatus && errorStatus >= 400 && errorStatus < 500 ? errorStatus : 500
   res.status(status).json({ status: 'error', message })
 })
 

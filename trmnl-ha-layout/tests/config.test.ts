@@ -45,6 +45,16 @@ describe('layout config', () => {
     config.data.selectors = { minutesAsleep: 'attributes.forecast[0].temperature' }
     expect(() => validateLayoutConfig(config)).toThrow('unsupported path')
 
+    for (const selector of [
+      'attributes.forecast.8.temperature',
+      'attributes.forecast.0.details.temperature.value',
+      `attributes.${'a'.repeat(65)}`,
+      `attributes.${'a'.repeat(246)}`
+    ]) {
+      config.data.selectors = { minutesAsleep: selector }
+      expect(() => validateLayoutConfig(config)).toThrow('unsupported path')
+    }
+
     config.data.selectors = { minutesAsleep: 42 } as unknown as Record<string, string>
     expect(() => validateLayoutConfig(config)).toThrow('must be a string map')
   })

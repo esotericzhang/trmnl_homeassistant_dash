@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import yaml from 'js-yaml'
 import type { LayoutConfig, LayoutItem } from './types.js'
 
@@ -34,9 +35,13 @@ export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayou
     noRefs: true,
     sortKeys: false
   })
-  const temporaryPath = `${layoutPath}.tmp`
-  fs.writeFileSync(temporaryPath, yamlText, 'utf8')
-  fs.renameSync(temporaryPath, layoutPath)
+  const temporaryPath = `${layoutPath}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporaryPath, yamlText, 'utf8')
+    fs.renameSync(temporaryPath, layoutPath)
+  } finally {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath)
+  }
   return loadLayoutConfig(layoutPath)
 }
 
@@ -79,11 +84,22 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 }
 
 const UNSAFE_VALUE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype', 'toString', 'valueOf'])
+const MAX_VALUE_PATH_LENGTH = 256
+const MAX_VALUE_PATH_SEGMENTS = 5
+const MAX_VALUE_PATH_SEGMENT_LENGTH = 64
+const MAX_VALUE_PATH_ARRAY_INDEX = 7
 
 export function isSafeValuePath(value: string): boolean {
   if (value === 'state') return true
+  if (value.length > MAX_VALUE_PATH_LENGTH) return false
   if (!/^attributes(?:\.[a-zA-Z0-9_]+)+$/.test(value)) return false
-  return value.split('.').every(segment => !UNSAFE_VALUE_PATH_SEGMENTS.has(segment))
+  const segments = value.split('.')
+  if (segments.length > MAX_VALUE_PATH_SEGMENTS) return false
+  return segments.every((segment, index) => {
+    if (segment.length > MAX_VALUE_PATH_SEGMENT_LENGTH || UNSAFE_VALUE_PATH_SEGMENTS.has(segment)) return false
+    if (index > 0 && /^\d+$/.test(segment) && Number(segment) > MAX_VALUE_PATH_ARRAY_INDEX) return false
+    return true
+  })
 }
 
 function validateItem(item: LayoutItem): void {

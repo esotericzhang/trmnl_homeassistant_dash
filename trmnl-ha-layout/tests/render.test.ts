@@ -244,6 +244,36 @@ describe('renderer', () => {
     expect(svg).not.toContain('>WWWW</text>')
   })
 
+  it('wraps lowercase wide glyphs conservatively', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'lowercase-wide-wrap', type: 'text', x: 0, y: 0, width: 60, height: 60, fontSize: 20, weight: 700, text: 'mmmmmm' }]
+    }
+
+    const svg = renderSvg(config, { values: {}, states: {} })
+
+    expect(svg).toContain('>mmm</text>')
+    expect(svg).not.toContain('>mmmm</text>')
+  })
+
+  it('renders forecast precipitation amounts without percent signs', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { weather: 'weather.home' } },
+      items: [{ id: 'forecast-amount', type: 'forecast', x: 0, y: 0, width: 400, height: 40, source: 'weather' }]
+    }
+    const data: RenderData = {
+      values: {},
+      states: { weather: { entity_id: 'weather.home', state: 'rainy', attributes: { forecast: [{ precipitation: 2.4 }] } } }
+    }
+
+    const svg = renderSvg(config, data)
+
+    expect(svg).toContain('>2.4</text>')
+    expect(svg).not.toContain('2.4%')
+  })
+
   it('marks text truncated by item height with an ellipsis', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

@@ -93,8 +93,13 @@
     }
     async function persistExport(layout) {
       status('Saving layout to dashboard...');
-      const json = await fetchJson(backend() + '/api/figma/layout', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(layout) });
-      status('Saved '+(json.items ? json.items.length : layout.widgets.length)+' widget(s). Open /preview to review.');
+      try {
+        const json = await fetchJson(backend() + '/api/figma/layout', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(layout) });
+        status('Saved '+(json.items ? json.items.length : layout.widgets.length)+' widget(s). Open /preview to review.');
+      } finally {
+        $('save-dashboard').disabled = false;
+        $('export-selected').disabled = false;
+      }
     }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     $('save-url').onclick = () => { send({ type:'save-backend-url', url: backend() }); status('Backend URL set to '+backend()+'. Also update manifest networkAccess for LAN hosts before importing.'); };
@@ -134,18 +139,20 @@
         exportActions.delete(msg.requestId);
         exportedLayout = msg.layout;
         $('export-output').textContent = JSON.stringify(msg.layout, null, 2) + (msg.warnings.length ? '\n\nWarnings:\n- ' + msg.warnings.join('\n- ') : '');
-        $('save-dashboard').disabled = false;
-        $('export-selected').disabled = false;
         if (action === 'save') {
           const risky = msg.warnings.length || msg.layout.widgets.length === 0;
           const detail = msg.warnings.length ? msg.warnings.join('\n') : 'The export contains no widgets and will clear the dashboard layout.';
           if (risky && !confirm(detail + '\n\nSave this export anyway?')) {
+            $('save-dashboard').disabled = false;
+            $('export-selected').disabled = false;
             status('Save cancelled. Resolve export warnings or select the intended frame.');
             return;
           }
           persistExport(msg.layout).catch(e => status('Save failed: '+e.message));
           return;
         }
+        $('save-dashboard').disabled = false;
+        $('export-selected').disabled = false;
         status('Exported '+msg.layout.widgets.length+' widget(s).');
       }
     };

@@ -604,10 +604,12 @@ function renderForecast(item: ForecastItem, data: RenderData, renderIndex: numbe
 }
 
 function precipitationValue(entry: Record<string, unknown>): string {
-  const value = entry.precipitation_probability ?? entry.precipitationProbability ?? entry.precipitation
-  if (value === undefined || value === null || value === '') return ''
-  if (typeof value === 'number') return `${Math.round(value)}%`
-  return String(value)
+  const probability = entry.precipitation_probability ?? entry.precipitationProbability
+  if (probability !== undefined && probability !== null && probability !== '') {
+    return typeof probability === 'number' ? `${Math.round(probability)}%` : String(probability)
+  }
+  const amount = entry.precipitation
+  return amount === undefined || amount === null || amount === '' ? '' : String(amount)
 }
 
 function truncateText(text: string, maxWidth: number, fontSize: number): string {
@@ -677,7 +679,7 @@ function estimatedGraphemeWidth(grapheme: string, fontSize: number, weight: numb
   let em = 0.58
   if (/^\s$/u.test(grapheme)) em = 0.34
   else if (/^[ilIjtfr1.,'`:;|!]$/u.test(grapheme)) em = 0.36
-  else if (/^[MW@#%&QO0]$/u.test(grapheme)) em = 0.9
+  else if (/^[MWmw@#%&QO0]$/u.test(grapheme)) em = 0.9
   else if (/^[A-Z]$/u.test(grapheme)) em = 0.72
   else if (/^[\p{Extended_Pictographic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(grapheme)) em = 1
   return fontSize * em * (weight >= 700 ? 1.06 : weight >= 500 ? 1.03 : 1)

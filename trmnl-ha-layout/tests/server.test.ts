@@ -62,6 +62,16 @@ describe('server routes', () => {
     expect(previewHtml).toContain("Authorization:'Bearer '+token")
     expect(previewHtml).toContain("fetch('/api/refresh',{method:'POST',headers:authHeaders()})")
   })
+
+  it('returns 400 for malformed JSON request bodies', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{'
+    })
+
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('settings + terminus auth routes', () => {
