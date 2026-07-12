@@ -241,7 +241,9 @@ function exportNode(node, frame, warnings) {
     }
     if (node.type === 'TEXT') {
         const paintVisibility = textPaintVisibility(node);
-        if (paintVisibility !== 'visible') {
+        if (paintVisibility === 'partial')
+            warnings.push(`${node.name}: text fill opacity cannot be represented and will export as fully opaque.`);
+        if (paintVisibility !== 'visible' && paintVisibility !== 'partial') {
             warnings.push(`${node.name}: skipped because its text fills are ${paintVisibility === 'mixed' ? 'mixed and cannot be safely exported' : 'hidden or transparent'}.`);
             return null;
         }
@@ -468,7 +470,9 @@ function metricCardParts(node, warnings) {
         const paintVisibility = textPaintVisibility(part);
         if (paintVisibility === 'mixed')
             warnings.push(`${part.name}: mixed text fills cannot be safely exported.`);
-        if (paintVisibility !== 'visible')
+        if (paintVisibility === 'partial')
+            warnings.push(`${part.name}: text fill opacity cannot be represented and will export as fully opaque.`);
+        if (paintVisibility !== 'visible' && paintVisibility !== 'partial')
             return null;
     }
     if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox))
@@ -481,7 +485,10 @@ function isVisibleMetricPart(node, cardBounds) {
 function textPaintVisibility(node) {
     if (node.fills === figma.mixed)
         return 'mixed';
-    return hasVisiblePaint(node.fills) ? 'visible' : 'invisible';
+    const visiblePaints = node.fills.filter(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001);
+    if (visiblePaints.length === 0)
+        return 'invisible';
+    return visiblePaints.some(paint => (paint.opacity ?? 1) < 0.999) ? 'partial' : 'visible';
 }
 function alignFor(node) {
     if (node.textAlignHorizontal === 'CENTER')

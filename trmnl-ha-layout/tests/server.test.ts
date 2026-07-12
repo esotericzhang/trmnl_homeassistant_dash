@@ -344,6 +344,7 @@ describe('figma bridge routes', () => {
   })
 
   it('GET /api/figma/entities returns sanitized Home Assistant entities', async () => {
+    saveSettings({ ...loadSettings(), settingsToken: 'test-settings-token' })
     globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
       const urlString = String(url)
       if (urlString.startsWith(baseUrl)) return originalFetch(url, init)
@@ -377,7 +378,7 @@ describe('figma bridge routes', () => {
       ]), { status: 200 })
     }) as typeof fetch
 
-    const res = await fetch(`${baseUrl}/api/figma/entities`)
+    const res = await fetch(`${baseUrl}/api/figma/entities`, { headers: { Authorization: 'Bearer test-settings-token' } })
     expect(res.ok).toBe(true)
     expect(res.headers.get('access-control-allow-origin')).toBe('*')
     const body = await res.json() as { source: string; entities: Array<Record<string, unknown>> }
@@ -445,19 +446,12 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('device-secret')
   })
 
-  it('GET /api/figma/entities rejects no-token production access', async () => {
-    const originalNodeEnv = process.env.NODE_ENV
+  it('GET /api/figma/entities rejects access without a configured token in development', async () => {
     const existing = loadSettings()
     saveSettings({ ...existing, settingsToken: undefined })
-    process.env.NODE_ENV = 'production'
-
-    try {
-      const res = await fetch(`${baseUrl}/api/figma/entities`)
-      expect(res.status).toBe(401)
-      expect(res.headers.get('access-control-allow-origin')).toBe('*')
-    } finally {
-      process.env.NODE_ENV = originalNodeEnv
-    }
+    const res = await fetch(`${baseUrl}/api/figma/entities`)
+    expect(res.status).toBe(401)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
   })
 
   it('cross-origin Figma bridge requests require a configured token', async () => {

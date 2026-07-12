@@ -129,7 +129,7 @@ app.put('/api/config', (req, res, next) => {
 
 // Local Figma plugin bridge. The plugin talks only to this dashboard bridge and never receives Home Assistant credentials.
 app.get('/api/figma/entities', async (req, res, next) => {
-  if (!requireFigmaBridgeAuth(req, res)) return
+  if (!requireConfiguredTokenAuth(req, res)) return
   try {
     const config = await currentRuntime()
     const layout = loadLayoutConfig()

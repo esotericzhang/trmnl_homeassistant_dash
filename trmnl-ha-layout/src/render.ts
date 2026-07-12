@@ -616,14 +616,21 @@ function wrapText(text: string, maxWidth: number, fontSize: number): string[] {
   return text.split('\n').flatMap((paragraph) => {
     if (!paragraph) return ['']
     const lines: string[] = []
-    let remaining = paragraph
+    let remaining = graphemes(paragraph)
     while (remaining.length > maxCharacters) {
-      const breakAt = remaining.lastIndexOf(' ', maxCharacters)
+      const breakAt = remaining.slice(0, maxCharacters + 1).lastIndexOf(' ')
       const length = breakAt > 0 ? breakAt : maxCharacters
-      lines.push(remaining.slice(0, length))
-      remaining = remaining.slice(length).trimStart()
+      lines.push(remaining.slice(0, length).join(''))
+      remaining = remaining.slice(length)
+      while (remaining[0]?.trim() === '') remaining.shift()
     }
-    lines.push(remaining)
+    lines.push(remaining.join(''))
     return lines
   })
+}
+
+function graphemes(text: string): string[] {
+  const Segmenter = (Intl as typeof Intl & { Segmenter?: new (...args: unknown[]) => { segment(value: string): Iterable<{ segment: string }> } }).Segmenter
+  if (!Segmenter) return Array.from(text)
+  return Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(text), entry => entry.segment)
 }

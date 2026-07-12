@@ -76,7 +76,7 @@ Terminus settings can usually be saved in the editor instead of Compose. Use env
 - `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`.
 - `ADDON_BASE_URL`: Required only for `byos-uri`; this is the URL Terminus can use to fetch this dashboard's `/screen.png`.
 - `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
-- `SETTINGS_TOKEN`: Optional bearer token for protected layout, settings, refresh, Figma bridge, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it for the editor.
+- `SETTINGS_TOKEN`: Required for Figma entity loading and optional bearer protection for layout, settings, refresh, other Figma bridge, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it for the editor.
 
 Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
 
@@ -98,7 +98,7 @@ The editor's **Connection Settings** panel saves runtime settings to `settings.j
 
 Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Refreshes re-read connection and Terminus settings before each push, so those GUI settings changes do not require a restart; changing `refresh_interval_seconds` affects scheduling after restart.
 
-Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect layout/settings mutations and the local Figma entity bridge. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. The Figma plugin has its own **Dashboard Token** field for protected bridge calls. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
+Set `SETTINGS_TOKEN` or the add-on `settings_token` option before loading entities through the local Figma bridge. The same token can protect layout/settings mutations and other bridge requests. Open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. The Figma plugin has its own **Dashboard Token** field for bridge calls. If no token is configured, entity loading is denied while mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
 ### Layout and rendering model
 
@@ -144,7 +144,7 @@ The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDoma
 
 1. Run **TRMNL Home Assistant Designer** from Figma's development plugins menu.
 2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
-3. Configure `SETTINGS_TOKEN` or the add-on `settings_token`, enter the same value in **Dashboard Token**, and click **Save**. Cross-origin Figma plugin requests require this token; no-token development remains available only to same-origin or non-browser requests.
+3. Configure `SETTINGS_TOKEN` or the add-on `settings_token`, enter the same value in **Dashboard Token**, and click **Save**. Loading entity data always requires this configured token, including local development.
 4. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
 5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The status says whether the result is **live** Home Assistant data or **sample** fallback data. The plugin receives only sanitized entity metadata and bounded primitive state/attribute values; credential-like attributes are omitted and Home Assistant credentials are never returned.
 6. In an entity row, choose **Value**. `State` uses the normal entity state. Attribute-rich entities expose paths such as `forecast.0.temperature`, `forecast.0.condition`, or other sanitized primitive attributes. Forecast arrays expose the first eight entries where feasible.
@@ -157,7 +157,7 @@ The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDoma
 13. Click **Save to Dashboard** to freshly export the current frame and call `PUT {backendUrl}/api/figma/layout`. Empty or warning-bearing exports require confirmation before replacing the dashboard. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, optional `data.selectors`, and `items`) into the existing YAML config.
 14. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
-Loading live Figma entities, previewing exports, and saving from the cross-origin Figma plugin require a configured `SETTINGS_TOKEN` and the matching dashboard token in the plugin. The backend's no-token development fallback applies only to same-origin or non-browser requests, not cross-origin bridge access.
+Loading Figma entities always requires a configured `SETTINGS_TOKEN` and the matching dashboard token in the plugin. Previewing exports and saving from the cross-origin Figma plugin require the same token; the no-token development fallback does not expose entity data.
 
 ### Figma workflow limitations
 
@@ -175,7 +175,7 @@ Loading live Figma entities, previewing exports, and saving from the cross-origi
 - Open `http://localhost:10000/preview` and verify sample rendering works.
 - Build the plugin with `npm run build` in `figma-plugin/`.
 - Import `figma-plugin/manifest.json` in Figma Desktop development plugins.
-- If `SETTINGS_TOKEN` is configured, save the same value in **Dashboard Token** before loading entities or saving the dashboard.
+- Configure `SETTINGS_TOKEN` and save the same value in **Dashboard Token** before loading entities or saving the dashboard.
 - Create an 800x480 TRMNL frame.
 - Load entities and verify no Home Assistant token appears in plugin output, plugin data, browser console, or exported JSON.
 - Verify the status identifies the entity source as `live` or `sample`. If it says `sample`, configure `HOME_ASSISTANT_URL` and `ACCESS_TOKEN` (or save the HA token in `/editor`) before testing actual attributes.
@@ -203,7 +203,7 @@ Loading live Figma entities, previewing exports, and saving from the cross-origi
 - `TERMINUS_SCREEN_ID`: Optional fallback for duplicate-screen cleanup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
 - `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint for `raw-webhook` mode.
 - `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
-- `SETTINGS_TOKEN`: Optional bearer token required for protected layout, settings, refresh, Figma bridge, and Terminus auth requests.
+- `SETTINGS_TOKEN`: Bearer token required for Figma entity loading and optional protection for layout, settings, refresh, other Figma bridge, and Terminus auth requests.
 - `ALLOW_NO_AUTH`: Set to `1` to allow unauthenticated settings mutations without the development warning.
 
 `ADDON_BASE_URL` / `addon_base_url` take precedence over legacy `PUBLIC_BASE_URL` / `public_base_url`; existing legacy values continue to work when the new alias is unset.
@@ -220,7 +220,7 @@ Loading live Figma entities, previewing exports, and saving from the cross-origi
 - `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
-- `GET /api/figma/entities`: returns `{ source: "live" | "sample", entities }` for the local Figma plugin. Each entity includes sanitized primitive state/attribute value paths; credential-like attribute keys and Home Assistant credentials are omitted. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+- `GET /api/figma/entities`: returns `{ source: "live" | "sample", entities }` for the local Figma plugin. Each entity includes sanitized primitive state/attribute value paths; credential-like attribute keys and Home Assistant credentials are omitted. It always requires a configured `SETTINGS_TOKEN` and matching `Authorization: Bearer <SETTINGS_TOKEN>` header.
 - `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
 - `PUT /api/figma/layout`: accepts `{ width: 800, height: 480, widgets }`, validates supported `text` and `metric_card` widgets and their in-frame geometry, then replaces `data.entities` and `items` in the existing YAML layout while preserving the other layout settings.
 - `GET /api/settings`: returns GUI settings with tokens masked.
@@ -229,4 +229,4 @@ Loading live Figma entities, previewing exports, and saving from the cross-origi
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-Protected endpoints (`GET /api/figma/entities`, `POST /api/figma/preview-layout`, `PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+`GET /api/figma/entities` always requires a configured token. Other protected endpoints (`POST /api/figma/preview-layout`, `PUT /api/config`, `PUT /api/figma/layout`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.

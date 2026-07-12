@@ -289,7 +289,8 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
   }
   if (node.type === 'TEXT') {
     const paintVisibility = textPaintVisibility(node)
-    if (paintVisibility !== 'visible') {
+    if (paintVisibility === 'partial') warnings.push(`${node.name}: text fill opacity cannot be represented and will export as fully opaque.`)
+    if (paintVisibility !== 'visible' && paintVisibility !== 'partial') {
       warnings.push(`${node.name}: skipped because its text fills are ${paintVisibility === 'mixed' ? 'mixed and cannot be safely exported' : 'hidden or transparent'}.`)
       return null
     }
@@ -508,7 +509,8 @@ function metricCardParts(node: SceneNode, warnings: string[]): { label: TextNode
   for (const part of [label, value]) {
     const paintVisibility = textPaintVisibility(part)
     if (paintVisibility === 'mixed') warnings.push(`${part.name}: mixed text fills cannot be safely exported.`)
-    if (paintVisibility !== 'visible') return null
+    if (paintVisibility === 'partial') warnings.push(`${part.name}: text fill opacity cannot be represented and will export as fully opaque.`)
+    if (paintVisibility !== 'visible' && paintVisibility !== 'partial') return null
   }
   if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox)) return null
   return { label, value }
@@ -518,9 +520,11 @@ function isVisibleMetricPart(node: TextNode, cardBounds: Rect): boolean {
   return node.visible && node.opacity > 0.001 && Boolean(node.absoluteBoundingBox) && !isClipped(node, cardBounds)
 }
 
-function textPaintVisibility(node: TextNode): 'visible' | 'invisible' | 'mixed' {
+function textPaintVisibility(node: TextNode): 'visible' | 'partial' | 'invisible' | 'mixed' {
   if (node.fills === figma.mixed) return 'mixed'
-  return hasVisiblePaint(node.fills) ? 'visible' : 'invisible'
+  const visiblePaints = node.fills.filter(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001)
+  if (visiblePaints.length === 0) return 'invisible'
+  return visiblePaints.some(paint => (paint.opacity ?? 1) < 0.999) ? 'partial' : 'visible'
 }
 
 function alignFor(node: TextNode): 'left' | 'center' | 'right' | undefined {

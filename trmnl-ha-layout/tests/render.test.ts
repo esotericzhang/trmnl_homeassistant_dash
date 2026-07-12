@@ -194,6 +194,18 @@ describe('renderer', () => {
     expect(svg).not.toContain('&amp</text>')
   })
 
+  it('wraps text without splitting grapheme clusters', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'unicode-wrap', type: 'text', x: 0, y: 0, width: 9, height: 80, fontSize: 16, text: '👨‍👩‍👧‍👦éX' }]
+    }
+    const svg = renderSvg(config, { values: {}, states: {} })
+    expect(svg).toContain('>👨‍👩‍👧‍👦</text>')
+    expect(svg).toContain('>é</text>')
+    expect(svg).not.toContain('�')
+  })
+
   it('clips metric contents to the card bounds', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
