@@ -554,11 +554,14 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
 function renderMetric(item: MetricItem, data: RenderData, index: number): string {
   const clipId = `clip-metric-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const valueFontSize = item.fontSize ?? 30
-  const labelY = Math.min(14, Math.max(item.height - valueFontSize - 8, 0))
-  const valueY = Math.max(Math.min(46, item.height - valueFontSize), labelY)
-  return `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="${item.width}" height="${item.height}" rx="10" /></clipPath></defs><g clip-path="url(#${clipId})" transform="translate(${item.x},${item.y})">
-    <rect width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
-    <text x="16" y="${labelY}" font-size="18" class="muted">${escapeXml(item.label)}</text>
+  const valueY = Math.max(Math.min(46, item.height - valueFontSize), 0)
+  const labelY = Math.min(14, Math.max(valueY - 22, 0))
+  const label = labelY + 18 <= valueY
+    ? `<text x="16" y="${labelY}" font-size="18" class="muted">${escapeXml(item.label)}</text>`
+    : ''
+  return `<rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
+  <defs><clipPath id="${clipId}"><rect x="0" y="0" width="${item.width}" height="${item.height}" rx="10" /></clipPath></defs><g clip-path="url(#${clipId})" transform="translate(${item.x},${item.y})">
+    ${label}
     <text x="16" y="${valueY}" font-size="${valueFontSize}" font-weight="700">${interpolate(item.value, data.values)}${escapeXml(item.suffix ?? '')}</text>
   </g>`
 }

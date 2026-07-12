@@ -315,6 +315,9 @@ describe('renderer', () => {
     expect(svg).toContain('<clipPath id="clip-metric-0-small-card"><rect x="0" y="0" width="80" height="24" rx="10" /></clipPath>')
     expect(svg).toContain('<g clip-path="url(#clip-metric-0-small-card)" transform="translate(10,20)">')
     expect(svg).toContain('<text x="16" y="0" font-size="40" font-weight="700">123</text>')
+    expect(svg).not.toContain('class="muted">Label</text>')
+    expect(svg).toContain('<rect x="10" y="20" width="80" height="24" rx="10" fill="#f7f7f7" stroke="#111" />')
+    expect(svg).not.toContain('<g clip-path="url(#clip-metric-0-small-card)" transform="translate(10,20)">\n    <rect')
   })
 
   it('keeps normal metric values inside legacy card bounds', () => {

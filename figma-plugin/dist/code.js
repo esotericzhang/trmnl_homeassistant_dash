@@ -7,6 +7,8 @@ const METRIC_CARD = {
     label: { x: 16, y: 14, fontSize: 18, height: 22 },
     value: { x: 16, y: 46, fontSize: 30 }
 };
+const MAX_METRIC_LABEL_LENGTH = 256;
+const MAX_STATIC_TEXT_LENGTH = 4096;
 figma.showUI(__html__, { width: 420, height: 640, themeColors: true });
 figma.ui.onmessage = async (message) => {
     try {
@@ -254,6 +256,10 @@ function exportNode(node, frame, warnings) {
             warnings.push(`${node.name}: skipped because it differs from the supported metric-card template.`);
             return null;
         }
+        if (parts.label.characters.length > MAX_METRIC_LABEL_LENGTH) {
+            warnings.push(`${node.name}: skipped because its label exceeds ${MAX_METRIC_LABEL_LENGTH} characters.`);
+            return null;
+        }
         return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: parts.label.characters, ...bounds, fontSize: typeof parts.value.fontSize === 'number' ? parts.value.fontSize : 30 };
     }
     if (node.type === 'TEXT') {
@@ -263,6 +269,10 @@ function exportNode(node, frame, warnings) {
             return null;
         if (hasVisiblePaint(node.strokes) || node.effects.some(effect => effect.visible !== false)) {
             warnings.push(`${node.name}: skipped because text strokes or effects cannot be represented.`);
+            return null;
+        }
+        if (!binding && node.characters.length > MAX_STATIC_TEXT_LENGTH) {
+            warnings.push(`${node.name}: skipped because static text exceeds ${MAX_STATIC_TEXT_LENGTH} characters.`);
             return null;
         }
         const label = binding ? textLabel(node, binding.entity_id) : undefined;
@@ -607,6 +617,7 @@ function hasRepresentableTypography(node, warnings) {
         || node.paragraphIndent !== 0
         || node.textCase !== 'ORIGINAL'
         || node.textDecoration !== 'NONE'
+        || node.textAlignHorizontal === 'JUSTIFIED'
         || node.textAlignVertical !== 'TOP';
     if (unsupportedLayout) {
         warnings.push(`${node.name}: skipped because line height, spacing, case, decoration, or vertical alignment cannot be represented.`);

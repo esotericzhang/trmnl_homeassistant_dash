@@ -109,6 +109,11 @@ function validateItem(item: LayoutItem): void {
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
     throw new LayoutConfigError(`item ${item.id} has unsupported type ${item.type}`)
   }
+  if (item.type === 'line') {
+    if (item.width === 0 && item.height === 0) throw new LayoutConfigError(`line item ${item.id} must have a non-zero extent`)
+  } else if (item.width <= 0 || item.height <= 0) {
+    throw new LayoutConfigError(`item ${item.id} must have positive width and height`)
+  }
   if (item.type === 'text') {
     if (item.literal !== undefined && typeof item.literal !== 'boolean') {
       throw new LayoutConfigError(`item ${item.id} has invalid literal`)

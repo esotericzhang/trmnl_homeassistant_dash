@@ -77,6 +77,27 @@ describe('layout config', () => {
     expect(() => validateLayoutConfig(config)).toThrow('each item must be an object')
   })
 
+  it('requires positive item dimensions', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const item = config.items.find(entry => entry.type === 'text')!
+    item.width = 0
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${item.id} must have positive width and height`)
+
+    item.width = 10
+    item.height = -1
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${item.id} must have positive width and height`)
+  })
+
+  it('allows axis-aligned lines but rejects zero-length lines', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const line = config.items.find(entry => entry.type === 'line')!
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+
+    line.width = 0
+    line.height = 0
+    expect(() => validateLayoutConfig(config)).toThrow(`line item ${line.id} must have a non-zero extent`)
+  })
+
   it('requires text literal flags to be boolean', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const title = config.items.find(item => item.type === 'text')

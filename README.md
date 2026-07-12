@@ -163,7 +163,7 @@ Loading Figma entities always requires a configured `SETTINGS_TOKEN` and the mat
 
 - The plugin talks only to this dashboard bridge. It is not intended to store Home Assistant credentials, and `/api/figma/entities` never returns tokens or sensitive settings.
 - Figma plugin network access and CORS can block LAN hosts unless the exact origin is listed in `manifest.json` before import.
-- Only visible text nodes and unmodified plugin-created metric card frames export cleanly. Hidden content and the generated guide label are omitted; extra visible card children, unsupported bound nodes, text strokes/effects, and content clipped by ancestors produce warnings and are skipped.
+- Only visible text nodes and unmodified plugin-created metric card frames export cleanly. Hidden content and the generated guide label are omitted; extra visible card children, justified text, unsupported bound nodes, text strokes/effects, over-limit labels/static text, and content clipped by ancestors produce warnings and are skipped.
 - Rotated, skewed, scaled, or flipped frames/nodes cannot be represented by the YAML schema and are rejected or skipped during export.
 - The TRMNL screen is black/white/grayscale e-ink; avoid color-dependent designs and tiny typography.
 - Figma plugins do not run in the background. Use **Refresh Selected** after changing Home Assistant state or reloading entities.
