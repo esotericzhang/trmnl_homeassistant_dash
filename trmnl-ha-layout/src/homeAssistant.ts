@@ -52,18 +52,27 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
 }
 
 function setSampleSelector(state: HassState, path: string, key: string): void {
-  if (path.startsWith('attributes.forecast.')) {
-    state.attributes.forecast = sampleForecast()
-    return
-  }
   const segments = path.split('.').slice(1)
-  let current: Record<string, unknown> = state.attributes
-  for (const segment of segments.slice(0, -1)) {
-    const next: Record<string, unknown> = {}
-    current[segment] = next
-    current = next
+  if (segments[0] === 'forecast') state.attributes.forecast = sampleForecast()
+  let current: Record<string, unknown> | unknown[] = state.attributes
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index]
+    const nextSegment = segments[index + 1]
+    const next = /^\d+$/.test(nextSegment) ? [] : {}
+    if (Array.isArray(current)) {
+      const arrayIndex = Number(segment)
+      current[arrayIndex] = current[arrayIndex] ?? next
+      current = current[arrayIndex] as Record<string, unknown> | unknown[]
+    } else {
+      current[segment] = current[segment] ?? next
+      current = current[segment] as Record<string, unknown> | unknown[]
+    }
   }
-  if (segments.length) current[segments.at(-1)!] = sampleValue(key) === 'unknown' ? 42 : sampleValue(key)
+  if (!segments.length) return
+  const leaf = segments.at(-1)!
+  const value = sampleValue(key) === 'unknown' ? 42 : sampleValue(key)
+  if (Array.isArray(current)) current[Number(leaf)] = value
+  else if (!Object.hasOwn(current, leaf)) current[leaf] = value
 }
 
 function sampleForecast(): Array<Record<string, unknown>> {

@@ -522,7 +522,7 @@ function renderItem(item: LayoutItem, data: RenderData, color: string, index: nu
   switch (item.type) {
     case 'text': return renderText(item, data, index)
     case 'metric': return renderMetric(item, data, index)
-    case 'forecast': return renderForecast(item, data)
+    case 'forecast': return renderForecast(item, data, index)
     case 'line': return `<line x1="${item.x}" y1="${item.y}" x2="${item.x + item.width}" y2="${item.y + item.height}" stroke="${color}" stroke-width="1" />`
   }
 }
@@ -542,7 +542,8 @@ function textX(item: LayoutItem): number {
 function renderText(item: TextItem, data: RenderData, index: number): string {
   const fontSize = item.fontSize ?? 18
   const lineHeight = Math.ceil(fontSize * 1.2)
-  const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize).slice(0, Math.max(Math.floor(item.height / lineHeight), 1))
+  const maxLines = Math.max(Math.floor(item.height / lineHeight), 1)
+  const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize, maxLines)
   const clipId = `clip-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
   return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" /></clipPath></defs><g clip-path="url(#${clipId})">${text}</g>`
@@ -557,7 +558,7 @@ function renderMetric(item: MetricItem, data: RenderData, index: number): string
   </g>`
 }
 
-function renderForecast(item: ForecastItem, data: RenderData): string {
+function renderForecast(item: ForecastItem, data: RenderData, renderIndex: number): string {
   const forecast = data.states[item.source]?.attributes.forecast
   const sourceRows = Array.isArray(forecast) ? forecast.slice(0, item.maxItems ?? 8) : []
   const fontSize = item.fontSize ?? 20
@@ -573,7 +574,7 @@ function renderForecast(item: ForecastItem, data: RenderData): string {
   const conditionFontSize = item.conditionFontSize ?? Math.max(fontSize - 2, 12)
   const rowPaddingY = item.rowPaddingY ?? 3
   const dividerInset = item.dividerInset ?? 0
-  const clipId = `clip-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  const clipId = `clip-${renderIndex}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const rendered = rows.map((row, index) => {
     const entry = row as Record<string, unknown>
     const y = index * rowHeight
@@ -611,22 +612,34 @@ function truncateText(text: string, maxWidth: number, fontSize: number): string 
   return `${text.slice(0, maxCharacters - 1)}…`
 }
 
-function wrapText(text: string, maxWidth: number, fontSize: number): string[] {
+function wrapText(text: string, maxWidth: number, fontSize: number, maxLines: number): string[] {
   const maxCharacters = Math.max(Math.floor(maxWidth / (fontSize * 0.55)), 1)
-  return text.split('\n').flatMap((paragraph) => {
-    if (!paragraph) return ['']
-    const lines: string[] = []
-    let remaining = graphemes(paragraph)
-    while (remaining.length > maxCharacters) {
-      const breakAt = remaining.slice(0, maxCharacters + 1).lastIndexOf(' ')
-      const length = breakAt > 0 ? breakAt : maxCharacters
-      lines.push(remaining.slice(0, length).join(''))
-      remaining = remaining.slice(length)
-      while (remaining[0]?.trim() === '') remaining.shift()
+  const lines: string[] = []
+  for (const paragraph of text.split('\n')) {
+    if (lines.length >= maxLines) break
+    if (!paragraph) {
+      lines.push('')
+      continue
     }
-    lines.push(remaining.join(''))
-    return lines
-  })
+    const characters = graphemes(paragraph)
+    let start = 0
+    while (characters.length - start > maxCharacters && lines.length < maxLines) {
+      let breakAt = -1
+      const limit = Math.min(start + maxCharacters + 1, characters.length)
+      for (let index = limit - 1; index > start; index--) {
+        if (characters[index] === ' ') {
+          breakAt = index
+          break
+        }
+      }
+      const end = breakAt > start ? breakAt : start + maxCharacters
+      lines.push(characters.slice(start, end).join(''))
+      start = end
+      while (characters[start]?.trim() === '') start++
+    }
+    if (lines.length < maxLines) lines.push(characters.slice(start).join(''))
+  }
+  return lines
 }
 
 function graphemes(text: string): string[] {

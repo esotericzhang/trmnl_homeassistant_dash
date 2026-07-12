@@ -79,6 +79,23 @@ describe('HomeAssistantClient', () => {
     expect(data.values.kitchenTemperature).toBe('42')
   })
 
+  it('builds forecast sample paths beyond representative fields and rows', () => {
+    const data = sampleRenderData({
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: {
+        entities: { precipitation: 'sensor.weather', humidity: 'sensor.weather' },
+        selectors: {
+          precipitation: 'attributes.forecast.0.precipitation_probability',
+          humidity: 'attributes.forecast.9.humidity'
+        }
+      },
+      items: []
+    })
+
+    expect(data.values.precipitation).toBe('42')
+    expect(data.values.humidity).toBe('42')
+  })
+
   it.each(['attributes.constructor', 'attributes.__proto__', 'attributes.toString'])(
     'rejects prototype-sensitive selector %s',
     (path) => {

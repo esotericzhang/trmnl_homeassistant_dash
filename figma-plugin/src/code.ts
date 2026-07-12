@@ -191,7 +191,6 @@ async function insertCard(entity: FigmaEntity): Promise<void> {
 
 async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
   const byId = new Map(entities.map(entity => [entity.entity_id, entity]))
-  await Promise.all([loadInter('Regular'), loadInter('Bold')])
   let updated = 0
   for (const node of figma.currentPage.selection) {
     for (const bound of boundNodes(node)) {

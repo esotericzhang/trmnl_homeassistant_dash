@@ -61,7 +61,7 @@ describe('renderer', () => {
     expect(forecast!.y + forecast!.rowPaddingY!).toBeGreaterThan(104)
 
     const svg = renderSvg(config, sampleRenderData(config))
-    expect(svg).toContain('<clipPath id="clip-forecast">')
+    expect(svg).toContain('<clipPath id="clip-8-forecast">')
     expect(svg).toContain('<rect x="0" y="0" width="744" height="342" />')
     expect(svg).toContain('translate(0,294)')
   })
@@ -94,7 +94,7 @@ describe('renderer', () => {
     expect(svg).toContain('font-size="31" font-weight="900"')
     expect(svg).toContain('font-size="30" font-weight="900" fill="#222"')
     expect(svg).toContain('x2="744" y2="41" stroke="#111"')
-    expect(svg).toContain('clip-path="url(#clip-forecast)"')
+    expect(svg).toContain('clip-path="url(#clip-8-forecast)"')
   })
 
   it('clips forecast rows and truncates long conditions inside item bounds', () => {
@@ -139,7 +139,7 @@ describe('renderer', () => {
     const svg = renderSvg(config, data)
     expect(svg).toContain('15%')
     expect(svg).toContain('excep…')
-    expect(svg).toContain('clip-path="url(#clip-forecast-test)"')
+    expect(svg).toContain('clip-path="url(#clip-0-forecast-test)"')
     expect(svg).not.toContain('translate(0,68)')
   })
 
@@ -204,6 +204,23 @@ describe('renderer', () => {
     expect(svg).toContain('>👨‍👩‍👧‍👦</text>')
     expect(svg).toContain('>é</text>')
     expect(svg).not.toContain('�')
+  })
+
+  it('uses unique forecast clip paths for IDs with the same sanitized form', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { weather: 'sensor.weather' } },
+      items: [
+        { id: 'weather hourly', type: 'forecast', x: 0, y: 0, width: 200, height: 40, source: 'weather' },
+        { id: 'weather-hourly', type: 'forecast', x: 0, y: 50, width: 300, height: 60, source: 'weather' }
+      ]
+    }
+    const data: RenderData = { values: {}, states: { weather: { entity_id: 'sensor.weather', state: 'forecast', attributes: { forecast: [] } } } }
+
+    const svg = renderSvg(config, data)
+
+    expect(svg).toContain('id="clip-0-weather-hourly"')
+    expect(svg).toContain('id="clip-1-weather-hourly"')
   })
 
   it('clips metric contents to the card bounds', () => {
