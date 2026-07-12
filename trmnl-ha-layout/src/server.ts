@@ -580,7 +580,8 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   return {
     ...base,
     type: 'text',
-    text: source ? `${widget.label || widget.entity}: ${placeholder}${unit}` : (widget.staticText ?? widget.label ?? 'Text')
+    text: source ? `${widget.label || widget.entity}: ${placeholder}${unit}` : (widget.staticText ?? widget.label ?? 'Text'),
+    literal: source ? undefined : true
   }
 }
 

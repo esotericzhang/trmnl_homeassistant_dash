@@ -194,6 +194,19 @@ describe('renderer', () => {
     expect(svg).not.toContain('&amp</text>')
   })
 
+  it('renders literal text without interpreting template delimiters', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'literal', type: 'text', x: 0, y: 0, width: 220, height: 40, text: '{{ value }}', literal: true }]
+    }
+
+    const svg = renderSvg(config, { values: { value: 'changed' }, states: {} })
+
+    expect(svg).toContain('{{ value }}')
+    expect(svg).not.toContain('changed')
+  })
+
   it('wraps text without splitting grapheme clusters', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

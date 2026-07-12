@@ -34,6 +34,7 @@ export interface BaseItem {
 export interface TextItem extends BaseItem {
   type: 'text'
   text: string
+  literal?: boolean
 }
 
 export interface MetricItem extends BaseItem {

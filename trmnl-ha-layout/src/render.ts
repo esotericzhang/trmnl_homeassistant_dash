@@ -544,7 +544,8 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
   const lineHeight = Math.ceil(fontSize * 1.2)
   const maxLines = Math.max(Math.floor(item.height / lineHeight), 1)
   const weight = item.weight ?? 400
-  const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize, numericFontWeight(weight), maxLines)
+  const value = item.literal ? item.text : interpolateRaw(item.text, data.values)
+  const lines = wrapText(value, item.width, fontSize, numericFontWeight(weight), maxLines)
   const clipId = `clip-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${weight}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
   return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" /></clipPath></defs><g clip-path="url(#${clipId})">${text}</g>`

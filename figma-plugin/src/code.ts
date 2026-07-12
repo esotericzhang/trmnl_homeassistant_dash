@@ -287,6 +287,7 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
     return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: parts.label.characters, ...bounds, fontSize: typeof parts.value.fontSize === 'number' ? parts.value.fontSize : 30 }
   }
   if (node.type === 'TEXT') {
+    if (!hasRepresentableTypography(node, warnings)) return null
     const paintVisibility = textPaintVisibility(node)
     if (paintVisibility === 'partial') warnings.push(`${node.name}: text fill opacity cannot be represented and will export as fully opaque.`)
     if (paintVisibility !== 'visible' && paintVisibility !== 'partial') {
@@ -506,6 +507,7 @@ function metricCardParts(node: SceneNode, warnings: string[]): { label: TextNode
   const value = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value')
   if (label?.type !== 'TEXT' || value?.type !== 'TEXT') return null
   for (const part of [label, value]) {
+    if (!hasRepresentableTypography(part, warnings)) return null
     const paintVisibility = textPaintVisibility(part)
     if (paintVisibility === 'mixed') warnings.push(`${part.name}: mixed text fills cannot be safely exported.`)
     if (paintVisibility === 'partial') warnings.push(`${part.name}: text fill opacity cannot be represented and will export as fully opaque.`)
@@ -513,6 +515,15 @@ function metricCardParts(node: SceneNode, warnings: string[]): { label: TextNode
   }
   if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox)) return null
   return { label, value }
+}
+
+function hasRepresentableTypography(node: TextNode, warnings: string[]): boolean {
+  const mixed: string[] = []
+  if (node.fontName === figma.mixed) mixed.push('font name')
+  if (node.fontSize === figma.mixed) mixed.push('font size')
+  if (mixed.length === 0) return true
+  warnings.push(`${node.name}: skipped because mixed ${mixed.join(' and ')} cannot be represented.`)
+  return false
 }
 
 function isVisibleMetricPart(node: TextNode, cardBounds: Rect): boolean {

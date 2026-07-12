@@ -526,7 +526,7 @@ describe('figma bridge routes', () => {
     const body = await res.json()
     expect(body.frame.width).toBe(800)
     expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
-    expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', x: 20, y: 18, width: 220, height: 32 })
+    expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', literal: true, x: 20, y: 18, width: 220, height: 32 })
     expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}°F' })
   })
 
@@ -539,6 +539,17 @@ describe('figma bridge routes', () => {
 
     expect(res.ok).toBe(true)
     expect((await res.json()).items[0].text).toBe('')
+  })
+
+  it('PUT /api/figma/layout marks template-like static text as literal', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', staticText: '{{ kitchenTemperature }}', x: 20, y: 18, width: 220, height: 32 }] })
+    })
+
+    expect(res.ok).toBe(true)
+    expect((await res.json()).items[0]).toMatchObject({ text: '{{ kitchenTemperature }}', literal: true })
   })
 
   it('PUT /api/config returns 400 for invalid client layout data', async () => {
