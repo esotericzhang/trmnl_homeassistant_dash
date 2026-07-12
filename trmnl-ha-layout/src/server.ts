@@ -519,7 +519,7 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   if (source && widget.entity) entities[source] = widget.entity
   if (source && selector) selectors[source] = selector
   const placeholder = source ? `{{ ${source}${widget.format ? ` | ${widget.format}` : ''} }}` : ''
-  const unit = selector ? '' : (widget.unit ?? '')
+  const unit = selector || widget.format ? '' : (widget.unit ?? '')
   const base = {
     id: uniqueItemId(widget.label || widget.entity || widget.staticText || widget.type, index),
     x: widget.x,

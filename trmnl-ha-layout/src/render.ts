@@ -229,8 +229,12 @@ export function renderEditorHtml(bootstrapToken = ''): string {
     function removeUnusedEntities(sources) {
       if (!config.data || !config.data.entities) return;
       for (const source of sources) {
-        if (source in config.data.entities && !sourceStillReferenced(source)) delete config.data.entities[source];
+        if (source in config.data.entities && !sourceStillReferenced(source)) {
+          delete config.data.entities[source];
+          if (config.data.selectors) delete config.data.selectors[source];
+        }
       }
+      if (config.data.selectors && !Object.keys(config.data.selectors).length) delete config.data.selectors;
     }
     function sourceStillReferenced(source) {
       return config.items.some(item => referencedSources(item).has(source));

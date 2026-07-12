@@ -235,7 +235,7 @@ function exportNode(node, frame, warnings) {
         return null;
     }
     if (binding?.widget_type === 'metric_card') {
-        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: largestChildFontSize(node) ?? 30 };
+        return { type: 'metric_card', entity: binding.entity_id, unit: binding.unit, valuePath: binding.value_path, format: binding.format, label: cardLabel(node, binding.entity_id), ...bounds, fontSize: metricValueFontSize(node) ?? 30 };
     }
     if (node.type === 'TEXT') {
         return {
@@ -369,11 +369,11 @@ function boundTextLabelFromSuffix(current, value) {
         return '';
     return current.slice(0, -suffix.length).trim();
 }
-function largestChildFontSize(node) {
+function metricValueFontSize(node) {
     if (!('children' in node))
         return undefined;
-    const sizes = node.children.flatMap(child => child.type === 'TEXT' && typeof child.fontSize === 'number' ? [child.fontSize] : []);
-    return sizes.length ? Math.max(...sizes) : undefined;
+    const value = node.children.find(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value');
+    return value?.type === 'TEXT' && typeof value.fontSize === 'number' ? value.fontSize : undefined;
 }
 function alignFor(node) {
     if (node.textAlignHorizontal === 'CENTER')
@@ -387,7 +387,24 @@ function alignFor(node) {
 function textWeight(node) {
     if (typeof node.fontName !== 'object')
         return undefined;
-    return /bold|black|heavy|semibold/i.test(node.fontName.style) ? 700 : 400;
+    const style = node.fontName.style.toLowerCase().replace(/[\s-]+/g, '');
+    if (/thin|hairline/.test(style))
+        return 100;
+    if (/extralight|ultralight/.test(style))
+        return 200;
+    if (/light/.test(style))
+        return 300;
+    if (/medium/.test(style))
+        return 500;
+    if (/semibold|demibold/.test(style))
+        return 600;
+    if (/extrabold|ultrabold/.test(style))
+        return 800;
+    if (/black|heavy/.test(style))
+        return 900;
+    if (/bold/.test(style))
+        return 700;
+    return 400;
 }
 async function loadInter(style) {
     try {
@@ -412,7 +429,8 @@ function entityValue(entity) {
     const selectedValue = entity.values?.find(value => value.path === path);
     const selected = selectedValue ? selectedValue.value : entity.state;
     const formatted = formatEntityValue(selected, entity.format);
-    return `${formatted}${path === 'state' ? (entity.unit ?? '') : ''}`;
+    const unit = path === 'state' && !entity.format && formatted !== '—' ? (entity.unit ?? '') : '';
+    return `${formatted}${unit}`;
 }
 function entityForBinding(entity, binding) {
     return { ...entity, value_path: binding.value_path, format: binding.format };

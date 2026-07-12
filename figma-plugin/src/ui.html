@@ -35,6 +35,7 @@
     let entities = [];
     let entitySource = 'unknown';
     let exportedLayout = null;
+    let exportAction = 'preview';
     const status = message => { $('status').textContent = message; };
     const backend = () => $('backend-url').value.trim().replace(/\/$/, '') || 'http://localhost:10000';
     const dashboardToken = () => $('dashboard-token').value.trim();
@@ -77,10 +78,17 @@
       status('Loaded '+entities.length+' sanitized entities from '+entitySource+' data. HA tokens are never sent to this plugin.');
     }
     async function saveDashboard() {
-      if (!exportedLayout) return;
+      exportAction = 'save';
+      exportedLayout = null;
+      $('save-dashboard').disabled = true;
+      $('export-output').textContent = '';
+      status('Exporting current frame before saving...');
+      send({ type:'export-selected' });
+    }
+    async function persistExport(layout) {
       status('Saving layout to dashboard...');
-      const json = await fetchJson(backend() + '/api/figma/layout', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(exportedLayout) });
-      status('Saved '+(json.items ? json.items.length : exportedLayout.widgets.length)+' widget(s). Open /preview to review.');
+      const json = await fetchJson(backend() + '/api/figma/layout', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(layout) });
+      status('Saved '+(json.items ? json.items.length : layout.widgets.length)+' widget(s). Open /preview to review.');
     }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     $('save-url').onclick = () => { send({ type:'save-backend-url', url: backend() }); status('Backend URL set to '+backend()+'. Also update manifest networkAccess for LAN hosts before importing.'); };
@@ -92,6 +100,7 @@
       .then(() => send({ type:'refresh-selected', entities }))
       .catch(e => status('Refresh failed: '+e.message));
     $('export-selected').onclick = () => {
+      exportAction = 'preview';
       exportedLayout = null;
       $('save-dashboard').disabled = true;
       $('export-output').textContent = '';
@@ -115,6 +124,17 @@
         exportedLayout = msg.layout;
         $('export-output').textContent = JSON.stringify(msg.layout, null, 2) + (msg.warnings.length ? '\n\nWarnings:\n- ' + msg.warnings.join('\n- ') : '');
         $('save-dashboard').disabled = false;
+        if (exportAction === 'save') {
+          exportAction = 'preview';
+          const risky = msg.warnings.length || msg.layout.widgets.length === 0;
+          const detail = msg.warnings.length ? msg.warnings.join('\n') : 'The export contains no widgets and will clear the dashboard layout.';
+          if (risky && !confirm(detail + '\n\nSave this export anyway?')) {
+            status('Save cancelled. Resolve export warnings or select the intended frame.');
+            return;
+          }
+          persistExport(msg.layout).catch(e => status('Save failed: '+e.message));
+          return;
+        }
         status('Exported '+msg.layout.widgets.length+' widget(s).');
       }
     };

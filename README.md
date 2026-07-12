@@ -154,7 +154,7 @@ The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDoma
 10. Move and resize the Figma nodes inside the 800x480 frame.
 11. Select the frame, or a bound node inside it, then click **Refresh Selected** to refetch entities and update the selected state/attribute value using its saved format. User-edited text and card labels are preserved.
 12. Click **Export Selected Frame**. The plugin traverses visible supported nodes, skips its guide label, converts bindings to `data.entities`, optional `data.selectors`, and safe formatter templates, shows the generated JSON, and reports warnings for unsupported or out-of-frame nodes.
-13. Click **Save to Dashboard** to call `PUT {backendUrl}/api/figma/layout`. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, optional `data.selectors`, and `items`) into the existing YAML config.
+13. Click **Save to Dashboard** to freshly export the current frame and call `PUT {backendUrl}/api/figma/layout`. Empty or warning-bearing exports require confirmation before replacing the dashboard. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, optional `data.selectors`, and `items`) into the existing YAML config.
 14. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
 If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities and mutating Figma saves require the matching dashboard token in the plugin. If no token is configured, leave **Dashboard Token** blank; the plugin sends no `Authorization` header and preserves local/dev no-auth behavior.

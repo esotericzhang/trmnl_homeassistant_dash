@@ -41,4 +41,31 @@ describe('HomeAssistantClient', () => {
     })
     expect(data.values.temperature).toBe(61)
   })
+
+  it('fetches shared entities once before applying per-source selectors', async () => {
+    let requests = 0
+    const fetcher = (async () => {
+      requests++
+      return new Response(JSON.stringify({
+        entity_id: 'sensor.weather',
+        state: 'forecast',
+        attributes: { forecast: [{ temperature: 61, condition: 'cloudy' }] }
+      }), { status: 200 })
+    }) as typeof fetch
+    const client = new HomeAssistantClient('http://ha.local:8123', 'secret', fetcher)
+    const data = await client.collect({
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: {
+        entities: { temperature: 'sensor.weather', condition: 'sensor.weather' },
+        selectors: {
+          temperature: 'attributes.forecast.0.temperature',
+          condition: 'attributes.forecast.0.condition'
+        }
+      },
+      items: []
+    })
+
+    expect(requests).toBe(1)
+    expect(data.values).toMatchObject({ temperature: 61, condition: 'cloudy' })
+  })
 })

@@ -29,6 +29,22 @@ describe('renderer', () => {
     expect(svg).toContain('cloudy')
   })
 
+  it('provides forecast sample values for arbitrary selected source keys', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: {
+        entities: { firstTemperature: 'sensor.weather_hourly_forecast' },
+        selectors: { firstTemperature: 'attributes.forecast.0.temperature' }
+      },
+      items: [{ id: 'temperature', type: 'text', x: 0, y: 0, width: 100, height: 30, text: '{{ firstTemperature }}' }]
+    }
+
+    const data = sampleRenderData(config)
+
+    expect(data.values.firstTemperature).toBe(61)
+    expect(data.states.firstTemperature.attributes.forecast).toBeInstanceOf(Array)
+  })
+
   it('keeps the default OG forecast within the visible frame', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const forecast = config.items.find((item) => item.id === 'forecast')
