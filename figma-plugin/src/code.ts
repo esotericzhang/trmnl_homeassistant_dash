@@ -274,8 +274,9 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
     warnings.push(`${node.name}: skipped because bounds could not be read.`)
     return null
   }
-  if (bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > 800 || bounds.y + bounds.height > 480) {
-    warnings.push(`${node.name}: skipped because it is outside the 800x480 frame.`)
+  if (bounds.x < 0 || bounds.y < 0 || bounds.width <= 0 || bounds.height <= 0
+    || bounds.x + bounds.width > 800 || bounds.y + bounds.height > 480) {
+    warnings.push(`${node.name}: skipped because its rounded bounds are not positive and inside the 800x480 frame.`)
     return null
   }
   if (binding?.widget_type === 'metric_card') {

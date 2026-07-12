@@ -61,6 +61,9 @@ export function validateLayoutConfig(config: LayoutConfig): void {
   }
   const itemIds = new Set<string>()
   config.items.forEach((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new LayoutConfigError('each item must be an object')
+    }
     if (typeof item.id !== 'string' || item.id.trim().length === 0) {
       throw new LayoutConfigError('item id must be a non-empty string')
     }

@@ -460,6 +460,27 @@ describe('figma bridge routes', () => {
     }
   })
 
+  it('cross-origin Figma bridge requests require a configured token', async () => {
+    const existing = loadSettings()
+    saveSettings({ ...existing, haToken: '', settingsToken: undefined })
+
+    const entities = await fetch(`${baseUrl}/api/figma/entities`, { headers: { Origin: 'https://www.figma.com' } })
+    expect(entities.status).toBe(401)
+
+    const save = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://www.figma.com' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [] })
+    })
+    expect(save.status).toBe(401)
+
+    const preflight = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://www.figma.com', 'Access-Control-Request-Method': 'PUT' }
+    })
+    expect(preflight.status).toBe(401)
+  })
+
   it('GET /api/figma/entities requires auth when settings token is configured', async () => {
     const existing = loadSettings()
     saveSettings({ ...existing, haToken: '', settingsToken: 'guard-token' })
@@ -602,6 +623,20 @@ describe('figma bridge routes', () => {
     expect(res.status).toBe(400)
     const body = await res.json() as { message: string }
     expect(body.message).toContain('position and size must be positive')
+  })
+
+  it('PUT /api/figma/layout rejects excessive widget counts', async () => {
+    const widgets = Array.from({ length: 101 }, (_, index) => ({
+      type: 'text', staticText: String(index), x: 0, y: 0, width: 1, height: 1
+    }))
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets })
+    })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain('at most 100 widgets')
   })
 
   it.each([

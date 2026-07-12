@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { loadLayoutConfig, saveLayoutConfig, validateLayoutConfig } from '../src/config.js'
+import type { LayoutItem } from '../src/types.js'
 
 describe('layout config', () => {
   it('loads default layout with positioned items', () => {
@@ -55,5 +56,11 @@ describe('layout config', () => {
 
     config.items[0].id = 42 as unknown as string
     expect(() => validateLayoutConfig(config)).toThrow('item id must be a non-empty string')
+  })
+
+  it('rejects non-object item entries', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    config.items = [null as unknown as LayoutItem]
+    expect(() => validateLayoutConfig(config)).toThrow('each item must be an object')
   })
 })

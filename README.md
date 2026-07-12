@@ -144,7 +144,7 @@ The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDoma
 
 1. Run **TRMNL Home Assistant Designer** from Figma's development plugins menu.
 2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
-3. If the backend has `SETTINGS_TOKEN` or add-on `settings_token` configured, enter the same value in **Dashboard Token** and click **Save**. The plugin sends it as `Authorization: Bearer <token>` for protected bridge calls. Leave it blank for local no-token development.
+3. Configure `SETTINGS_TOKEN` or the add-on `settings_token`, enter the same value in **Dashboard Token**, and click **Save**. Cross-origin Figma plugin requests require this token; no-token development remains available only to same-origin or non-browser requests.
 4. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
 5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The status says whether the result is **live** Home Assistant data or **sample** fallback data. The plugin receives only sanitized entity metadata and bounded primitive state/attribute values; credential-like attributes are omitted and Home Assistant credentials are never returned.
 6. In an entity row, choose **Value**. `State` uses the normal entity state. Attribute-rich entities expose paths such as `forecast.0.temperature`, `forecast.0.condition`, or other sanitized primitive attributes. Forecast arrays expose the first eight entries where feasible.
@@ -157,7 +157,7 @@ The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDoma
 13. Click **Save to Dashboard** to freshly export the current frame and call `PUT {backendUrl}/api/figma/layout`. Empty or warning-bearing exports require confirmation before replacing the dashboard. The backend validates the 800x480 layout and saves only the layout sections (`frame`, `data.entities`, optional `data.selectors`, and `items`) into the existing YAML config.
 14. Click **Open Preview** or open `{backendUrl}/preview` to review the rendered dashboard. `/screen.png` and `/screen.svg` will reflect the saved layout.
 
-If `SETTINGS_TOKEN` is configured on the backend, loading live Figma entities and mutating Figma saves require the matching dashboard token in the plugin. If no token is configured, leave **Dashboard Token** blank; the plugin sends no `Authorization` header and preserves local/dev no-auth behavior.
+Loading live Figma entities, previewing exports, and saving from the cross-origin Figma plugin require a configured `SETTINGS_TOKEN` and the matching dashboard token in the plugin. The backend's no-token development fallback applies only to same-origin or non-browser requests, not cross-origin bridge access.
 
 ### Figma workflow limitations
 

@@ -31,6 +31,10 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type')
     if (req.method === 'OPTIONS') {
+      if (req.headers.origin && !settingsToken()) {
+        res.status(401).json({ status: 'error', message: 'cross-origin Figma bridge access requires SETTINGS_TOKEN' })
+        return
+      }
       res.status(204).send()
       return
     }
@@ -76,9 +80,16 @@ function requireMutationAuth(req: express.Request, res: express.Response): boole
 }
 
 function requireConfiguredTokenAuth(req: express.Request, res: express.Response): boolean {
-  if (isMutationAuthenticated(req)) return true
+  const token = settingsToken()
+  const header = req.headers.authorization ?? ''
+  const supplied = header.startsWith('Bearer ') ? header.slice(7) : ''
+  if (token && supplied.length === token.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(token))) return true
   res.status(401).json({ status: 'error', message: 'unauthorized' })
   return false
+}
+
+function requireFigmaBridgeAuth(req: express.Request, res: express.Response): boolean {
+  return req.headers.origin ? requireConfiguredTokenAuth(req, res) : requireMutationAuth(req, res)
 }
 
 async function currentRuntime() {
@@ -118,7 +129,7 @@ app.put('/api/config', (req, res, next) => {
 
 // Local Figma plugin bridge. The plugin talks only to this dashboard bridge and never receives Home Assistant credentials.
 app.get('/api/figma/entities', async (req, res, next) => {
-  if (!requireConfiguredTokenAuth(req, res)) return
+  if (!requireFigmaBridgeAuth(req, res)) return
   try {
     const config = await currentRuntime()
     const layout = loadLayoutConfig()
@@ -133,7 +144,7 @@ app.get('/api/figma/entities', async (req, res, next) => {
 })
 
 app.put('/api/figma/layout', (req, res, next) => {
-  if (!requireMutationAuth(req, res)) return
+  if (!requireFigmaBridgeAuth(req, res)) return
   try {
     const existing = loadLayoutConfig()
     const replacement = figmaLayoutToConfig(req.body, existing)
@@ -142,7 +153,7 @@ app.put('/api/figma/layout', (req, res, next) => {
 })
 
 app.post('/api/figma/preview-layout', (req, res, next) => {
-  if (!requireConfiguredTokenAuth(req, res)) return
+  if (!requireFigmaBridgeAuth(req, res)) return
   try {
     const existing = loadLayoutConfig()
     const layout = figmaLayoutToConfig(req.body, existing)
@@ -475,6 +486,7 @@ function validateFigmaLayout(body: unknown): FigmaLayout {
   const layout = body as Partial<FigmaLayout>
   if (layout.width !== 800 || layout.height !== 480) throw new FigmaLayoutError('layout width and height must be 800x480')
   if (!Array.isArray(layout.widgets)) throw new FigmaLayoutError('layout.widgets must be an array')
+  if (layout.widgets.length > 100) throw new FigmaLayoutError('layout.widgets must contain at most 100 widgets')
   const widgets = layout.widgets.map(normalizeFigmaWidget)
   return { width: 800, height: 480, widgets }
 }
