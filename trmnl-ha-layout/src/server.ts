@@ -366,11 +366,11 @@ function sanitizeEntity(state: HassState): FigmaEntity {
   const sanitizedState = sanitizePrimitive(state.state)
   return {
     entity_id: state.entity_id,
-    name: stringAttribute(attributes.friendly_name) ?? state.entity_id,
+    name: sanitizedStringAttribute(attributes.friendly_name) ?? state.entity_id,
     state: sanitizedState === undefined ? '—' : String(sanitizedState),
-    unit: stringAttribute(attributes.unit_of_measurement),
+    unit: sanitizedStringAttribute(attributes.unit_of_measurement),
     domain: state.entity_id.includes('.') ? state.entity_id.split('.')[0] : null,
-    device_class: stringAttribute(attributes.device_class),
+    device_class: sanitizedStringAttribute(attributes.device_class),
     values: [
       { path: 'state', label: 'State', value: sanitizedState ?? '—' },
       ...sanitizeAttributeValues(attributes)
@@ -433,8 +433,9 @@ function sanitizePrimitive(value: unknown): string | number | boolean | null | u
   return value
 }
 
-function stringAttribute(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
+function sanitizedStringAttribute(value: unknown): string | null {
+  const sanitized = sanitizePrimitive(value)
+  return typeof sanitized === 'string' && sanitized.length > 0 ? sanitized : null
 }
 
 function figmaLayoutToConfig(body: unknown, existing: LayoutConfig): LayoutConfig {
@@ -518,6 +519,7 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   if (source && widget.entity) entities[source] = widget.entity
   if (source && selector) selectors[source] = selector
   const placeholder = source ? `{{ ${source}${widget.format ? ` | ${widget.format}` : ''} }}` : ''
+  const unit = selector ? '' : (widget.unit ?? '')
   const base = {
     id: uniqueItemId(widget.label || widget.entity || widget.staticText || widget.type, index),
     x: widget.x,
@@ -533,13 +535,13 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
       ...base,
       type: 'metric',
       label: widget.label || widget.entity || 'Metric',
-      value: source ? `${placeholder}${widget.unit ?? ''}` : ''
+      value: source ? `${placeholder}${unit}` : ''
     }
   }
   return {
     ...base,
     type: 'text',
-    text: source ? `${widget.label || widget.entity}: ${placeholder}${widget.unit ?? ''}` : (widget.staticText || widget.label || 'Text')
+    text: source ? `${widget.label || widget.entity}: ${placeholder}${unit}` : (widget.staticText || widget.label || 'Text')
   }
 }
 

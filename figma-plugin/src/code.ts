@@ -443,7 +443,8 @@ function entityLine(entity: FigmaEntity): string {
 
 function entityValue(entity: FigmaEntity): string {
   const path = entity.value_path ?? 'state'
-  const selected = entity.values?.find(value => value.path === path)?.value ?? entity.state
+  const selectedValue = entity.values?.find(value => value.path === path)
+  const selected = selectedValue ? selectedValue.value : entity.state
   const formatted = formatEntityValue(selected, entity.format)
   return `${formatted}${path === 'state' ? (entity.unit ?? '') : ''}`
 }
@@ -453,7 +454,7 @@ function entityForBinding(entity: FigmaEntity, binding: { value_path: string; fo
 }
 
 function formatEntityValue(value: unknown, format?: string): string {
-  if (value === 'unknown' || value === 'unavailable') return '—'
+  if (value === null || value === undefined || value === 'unknown' || value === 'unavailable') return '—'
   if (format === 'minutes') {
     const minutes = Number(value)
     if (Number.isFinite(minutes)) {

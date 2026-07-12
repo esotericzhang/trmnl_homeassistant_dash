@@ -354,9 +354,9 @@ describe('figma bridge routes', () => {
           entity_id: 'sensor.temperature',
           state: '72.4',
           attributes: {
-            friendly_name: 'Temperature',
-            unit_of_measurement: '°F',
-            device_class: 'temperature',
+            friendly_name: 'https://example.test?token=name-secret',
+            unit_of_measurement: 'token=unit-secret',
+            device_class: 'session=device-secret',
             forecast: [{ temperature: 61, condition: 'cloudy', pin: '1234', url: 'https://example.test?token=secret' }],
             api_key: 'must-not-leak',
             session: 'must-not-leak-either'
@@ -378,11 +378,11 @@ describe('figma bridge routes', () => {
     expect(body.entities).toEqual([
       {
         entity_id: 'sensor.temperature',
-        name: 'Temperature',
+        name: 'sensor.temperature',
         state: '72.4',
-        unit: '°F',
+        unit: null,
         domain: 'sensor',
-        device_class: 'temperature',
+        device_class: null,
         values: [
           { path: 'state', label: 'State', value: '72.4' },
           { path: 'attributes.forecast.0.temperature', label: 'forecast.0.temperature', value: 61 },
@@ -394,6 +394,8 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('must-not-leak')
     expect(JSON.stringify(body)).not.toContain('1234')
     expect(JSON.stringify(body)).not.toContain('example.test')
+    expect(JSON.stringify(body)).not.toContain('unit-secret')
+    expect(JSON.stringify(body)).not.toContain('device-secret')
   })
 
   it('GET /api/figma/entities rejects no-token production access', async () => {
@@ -496,7 +498,7 @@ describe('figma bridge routes', () => {
         height: 480,
         widgets: [
           { type: 'metric_card', entity: 'sensor.sleep', label: 'Sleep', valuePath: 'state', format: 'minutes', x: 20, y: 20, width: 220, height: 92 },
-          { type: 'text', entity: 'sensor.weather', label: 'First temp', valuePath: 'attributes.forecast.0.temperature', x: 20, y: 130, width: 220, height: 32 }
+          { type: 'text', entity: 'sensor.weather', unit: '°F', label: 'First temp', valuePath: 'attributes.forecast.0.temperature', x: 20, y: 130, width: 220, height: 32 }
         ]
       })
     })

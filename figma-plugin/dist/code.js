@@ -400,7 +400,8 @@ function entityLine(entity) {
 }
 function entityValue(entity) {
     const path = entity.value_path ?? 'state';
-    const selected = entity.values?.find(value => value.path === path)?.value ?? entity.state;
+    const selectedValue = entity.values?.find(value => value.path === path);
+    const selected = selectedValue ? selectedValue.value : entity.state;
     const formatted = formatEntityValue(selected, entity.format);
     return `${formatted}${path === 'state' ? (entity.unit ?? '') : ''}`;
 }
@@ -408,7 +409,7 @@ function entityForBinding(entity, binding) {
     return { ...entity, value_path: binding.value_path, format: binding.format };
 }
 function formatEntityValue(value, format) {
-    if (value === 'unknown' || value === 'unavailable')
+    if (value === null || value === undefined || value === 'unknown' || value === 'unavailable')
         return '—';
     if (format === 'minutes') {
         const minutes = Number(value);
