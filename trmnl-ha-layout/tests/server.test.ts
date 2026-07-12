@@ -385,35 +385,8 @@ describe('figma bridge routes', () => {
     expect(body.source).toBe('live')
     expect(body.entities).toEqual([
       {
-        entity_id: 'sensor.api_credential',
-        name: 'sensor.api_credential',
-        state: '—',
-        unit: null,
-        domain: 'sensor',
-        device_class: null,
-        values: [{ path: 'state', label: 'State', value: '—' }]
-      },
-      {
         entity_id: 'sensor.build_identifier',
         name: 'sensor.build_identifier',
-        state: '—',
-        unit: null,
-        domain: 'sensor',
-        device_class: null,
-        values: [{ path: 'state', label: 'State', value: '—' }]
-      },
-      {
-        entity_id: 'sensor.door_pin',
-        name: 'sensor.door_pin',
-        state: '—',
-        unit: null,
-        domain: 'sensor',
-        device_class: null,
-        values: [{ path: 'state', label: 'State', value: '—' }]
-      },
-      {
-        entity_id: 'sensor.github_pat',
-        name: 'sensor.github_pat',
         state: '—',
         unit: null,
         domain: 'sensor',
@@ -624,7 +597,7 @@ describe('figma bridge routes', () => {
     const body = await res.json()
     expect(body.items[0].value).toBe('{{ sleep | minutes }}')
     expect(body.items[1].value).toBe('{{ sleepWithUnit | minutes }}')
-    expect(body.items[2]).toMatchObject({ text: '{{ weather }}', prefix: 'First temp: ' })
+    expect(body.items[2]).toMatchObject({ text: '{{ weather }}', prefix: 'First temp: ', suffix: '°F' })
     expect(body.items[3]).toMatchObject({ text: '{{ blankLabel }}', prefix: '' })
     expect(body.data.selectors).toEqual({ weather: 'attributes.forecast.0.temperature' })
   })
@@ -638,6 +611,17 @@ describe('figma bridge routes', () => {
     expect(res.status).toBe(400)
     const body = await res.json() as { message: string }
     expect(body.message).toContain('outside the 800x480 frame')
+  })
+
+  it.each(['sensor.api_credential', 'input_text.access_code', 'sensor.door_pin'])('PUT /api/figma/layout rejects secret-like entity %s', async (entity) => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', entity, x: 10, y: 10, width: 100, height: 30 }] })
+    })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain('secret-like entity')
   })
 
   it('PUT /api/figma/layout validates normalized geometry', async () => {

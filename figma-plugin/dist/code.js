@@ -151,7 +151,7 @@ async function refreshSelected(entities) {
             const entity = byId.get(binding.entity_id);
             if (!entity)
                 continue;
-            bound.setPluginData('unit', binding.value_path === 'state' ? (entity.unit ?? '') : '');
+            bound.setPluginData('unit', binding.format ? '' : (entity.unit ?? ''));
             if (bound.type === 'TEXT') {
                 await loadTextNodeFonts(bound);
                 if (binding.binding_type === 'metric_value')
@@ -182,8 +182,11 @@ function exportSelectedFrame() {
     const frameBounds = frame.absoluteBoundingBox;
     if (!frameBounds)
         throw new Error('Export frame bounds could not be read.');
+    const clip = ancestorClipBounds(frame, frameBounds);
+    if (!clip)
+        throw new Error('Export frame is fully clipped by an ancestor.');
     for (const child of frame.children)
-        exportTree(child, frame, frameBounds, widgets, warnings);
+        exportTree(child, frame, clip, widgets, warnings);
     post({ type: 'export-result', layout: { width: 800, height: 480, widgets }, warnings });
 }
 function selectedTrmnlFrame() {
@@ -253,6 +256,10 @@ function exportNode(node, frame, warnings) {
             return null;
         if (!hasRepresentableTextPaint(node, warnings))
             return null;
+        if (hasVisiblePaint(node.strokes) || node.effects.some(effect => effect.visible !== false)) {
+            warnings.push(`${node.name}: skipped because text strokes or effects cannot be represented.`);
+            return null;
+        }
         const label = binding ? textLabel(node, binding.entity_id) : undefined;
         if (label === null) {
             warnings.push(`${node.name}: skipped because its bound label and value changed; use Refresh Selected before exporting.`);
@@ -360,6 +367,19 @@ function intersectBounds(a, b) {
     const bottom = Math.min(a.y + a.height, b.y + b.height);
     return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
+function ancestorClipBounds(node, initial) {
+    let clip = initial;
+    let parent = node.parent;
+    while (parent && parent.type !== 'PAGE') {
+        if ('clipsContent' in parent && parent.clipsContent && parent.absoluteBoundingBox) {
+            clip = clip && intersectBounds(clip, parent.absoluteBoundingBox);
+            if (!clip)
+                return null;
+        }
+        parent = parent.parent;
+    }
+    return clip;
+}
 function isUnsupportedVisualNode(node) {
     if (readBinding(node))
         return true;
@@ -441,7 +461,7 @@ function readBinding(node) {
 }
 function textLabel(node, fallback) {
     const storedValue = node.getPluginData('bound_text_value');
-    if (storedValue && boundTextLabelFromSuffix(node.characters, storedValue) === null)
+    if (hasPluginData(node, 'bound_text_value') && boundTextLabelFromSuffix(node.characters, storedValue) === null)
         return null;
     const label = boundTextLabel(node, fallback);
     return label ?? fallback;
@@ -449,21 +469,24 @@ function textLabel(node, fallback) {
 function boundTextLabel(node, fallback, currentValue) {
     const stored = node.getPluginData('bound_text_label');
     const storedValue = node.getPluginData('bound_text_value');
-    const edited = boundTextLabelFromSuffix(node.characters, storedValue || currentValue);
+    const edited = boundTextLabelFromSuffix(node.characters, hasPluginData(node, 'bound_text_value') ? storedValue : currentValue);
     if (edited !== null)
         return edited;
-    if (stored)
+    if (hasPluginData(node, 'bound_text_label'))
         return stored;
     node.setPluginData('bound_text_label', fallback);
     return fallback;
 }
 function boundTextLabelFromSuffix(current, value) {
-    if (!value)
+    if (value === undefined)
         return null;
     const suffix = `: ${value}`;
     if (!current.endsWith(suffix))
         return null;
     return current.slice(0, -suffix.length).trim();
+}
+function hasPluginData(node, key) {
+    return node.getPluginDataKeys().includes(key);
 }
 function metricCardParts(node, warnings) {
     if (!('children' in node) || !node.absoluteBoundingBox)
@@ -652,7 +675,7 @@ function entityValue(entity) {
     const selectedValue = entity.values?.find(value => value.path === path);
     const selected = selectedValue?.value ?? (path === 'state' ? entity.state : undefined);
     const formatted = formatEntityValue(selected, entity.format);
-    const unit = path === 'state' && !entity.format && formatted !== '—' ? (entity.unit ?? '') : '';
+    const unit = !entity.format && formatted !== '—' ? (entity.unit ?? '') : '';
     return `${formatted}${unit}`;
 }
 function entityForBinding(entity, binding) {

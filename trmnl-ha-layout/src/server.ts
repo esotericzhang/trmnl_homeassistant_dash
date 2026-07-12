@@ -138,7 +138,7 @@ app.get('/api/figma/entities', async (req, res, next) => {
       : Object.values(sampleRenderData(layout).states)
     res.json({
       source: config.accessToken ? 'live' : 'sample',
-      entities: states.filter(isSupportedFigmaEntity).map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id))
+      entities: states.filter(state => isSupportedFigmaEntity(state) && !isSecretLikeEntity(state)).map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id))
     })
   } catch (error) { next(error) }
 })
@@ -378,18 +378,17 @@ function isSupportedFigmaEntity(state: HassState): boolean {
 
 function sanitizeEntity(state: HassState): FigmaEntity {
   const attributes = state.attributes ?? {}
-  const secretLike = isSecretLikeEntity(state)
-  const sanitizedState = secretLike ? undefined : sanitizePrimitive(state.state)
+  const sanitizedState = sanitizePrimitive(state.state)
   return {
     entity_id: state.entity_id,
-    name: secretLike ? state.entity_id : (sanitizedStringAttribute(attributes.friendly_name) ?? state.entity_id),
+    name: sanitizedStringAttribute(attributes.friendly_name) ?? state.entity_id,
     state: sanitizedState === undefined ? '—' : String(sanitizedState),
-    unit: secretLike ? null : sanitizedStringAttribute(attributes.unit_of_measurement),
+    unit: sanitizedStringAttribute(attributes.unit_of_measurement),
     domain: state.entity_id.includes('.') ? state.entity_id.split('.')[0] : null,
-    device_class: secretLike ? null : sanitizedStringAttribute(attributes.device_class),
+    device_class: sanitizedStringAttribute(attributes.device_class),
     values: [
       { path: 'state', label: 'State', value: sanitizedState ?? '—' },
-      ...(secretLike ? [] : sanitizeAttributeValues(attributes))
+      ...sanitizeAttributeValues(attributes)
     ]
   }
 }
@@ -515,6 +514,9 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
   if (item.entity !== undefined && (typeof item.entity !== 'string' || !/^[a-z0-9_]+\.[a-z0-9_]+$/.test(item.entity))) {
     throw new FigmaLayoutError(`widget ${index} has malformed entity id`)
   }
+  if (item.entity && isSecretLikeEntity({ entity_id: item.entity, state: '', attributes: {} })) {
+    throw new FigmaLayoutError(`widget ${index} cannot bind a secret-like entity`)
+  }
   validateOptionalFigmaString(item.unit, 'unit', index, 64, true)
   if (item.valuePath !== undefined && (typeof item.valuePath !== 'string' || !isSafeValuePath(item.valuePath))) {
     throw new FigmaLayoutError(`widget ${index} has invalid valuePath`)
@@ -558,7 +560,7 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   if (source && widget.entity) entities[source] = widget.entity
   if (source && selector) selectors[source] = selector
   const placeholder = source ? `{{ ${source}${widget.format ? ` | ${widget.format}` : ''} }}` : ''
-  const unit = selector || widget.format ? '' : (widget.unit ?? '')
+  const unit = widget.format ? '' : (widget.unit ?? '')
   const base = {
     id: uniqueItemId(widget.label || widget.entity || widget.staticText || widget.type, index),
     x: widget.x,

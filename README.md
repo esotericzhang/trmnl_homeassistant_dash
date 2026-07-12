@@ -146,7 +146,7 @@ The manifest allows `http://localhost:10000` under `networkAccess.devAllowedDoma
 2. Set **Backend URL**, defaulting to `http://localhost:10000`, and click **Save**. The value is persisted in Figma `clientStorage`.
 3. Configure `SETTINGS_TOKEN` or the add-on `settings_token`, enter the same value in **Dashboard Token**, and click **Save**. Loading entity data always requires this configured token, including local development.
 4. Click **Create 800x480 TRMNL Frame** to create a white 800x480 e-ink-friendly frame.
-5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The status says whether the result is **live** Home Assistant data or **sample** fallback data. The plugin receives only sanitized entity metadata and bounded primitive state/attribute values; credential-like attributes are omitted and Home Assistant credentials are never returned.
+5. Click **Load** to call `GET {backendUrl}/api/figma/entities`. The status says whether the result is **live** Home Assistant data or **sample** fallback data. The plugin receives only sanitized entity metadata and bounded primitive state/attribute values; credential-like attributes and secret-like entities are omitted, and Home Assistant credentials are never returned.
 6. In an entity row, choose **Value**. `State` uses the normal entity state. Attribute-rich entities expose paths such as `forecast.0.temperature`, `forecast.0.condition`, or other sanitized primitive attributes. Forecast arrays expose the first eight entries where feasible.
 7. Choose **Format**: `Raw`, `Minutes → hours/minutes`, `Time`, or `Date`. For `sensor.google_health_sleep_latest_minutes_asleep`, select `State` plus `Minutes → hours/minutes` to preview and save `417` as `6h 57m`.
 8. Use **Insert Text** for a bound text node such as `Living Room Temperature: 72.4°F`.
@@ -163,7 +163,7 @@ Loading Figma entities always requires a configured `SETTINGS_TOKEN` and the mat
 
 - The plugin talks only to this dashboard bridge. It is not intended to store Home Assistant credentials, and `/api/figma/entities` never returns tokens or sensitive settings.
 - Figma plugin network access and CORS can block LAN hosts unless the exact origin is listed in `manifest.json` before import.
-- Only visible text nodes and plugin-created metric card frames export cleanly. Hidden content and the generated guide label are omitted; unsupported bound nodes produce warnings.
+- Only visible text nodes and plugin-created metric card frames export cleanly. Hidden content and the generated guide label are omitted; unsupported bound nodes, text strokes/effects, and content clipped by ancestors produce warnings and are skipped.
 - Rotated, skewed, scaled, or flipped frames/nodes cannot be represented by the YAML schema and are rejected or skipped during export.
 - The TRMNL screen is black/white/grayscale e-ink; avoid color-dependent designs and tiny typography.
 - Figma plugins do not run in the background. Use **Refresh Selected** after changing Home Assistant state or reloading entities.
@@ -220,7 +220,7 @@ Loading Figma entities always requires a configured `SETTINGS_TOKEN` and the mat
 - `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
-- `GET /api/figma/entities`: returns `{ source: "live" | "sample", entities }` for the local Figma plugin. Each entity includes sanitized primitive state/attribute value paths; credential-like attribute keys and Home Assistant credentials are omitted. It always requires a configured `SETTINGS_TOKEN` and matching `Authorization: Bearer <SETTINGS_TOKEN>` header.
+- `GET /api/figma/entities`: returns `{ source: "live" | "sample", entities }` for the local Figma plugin. Each entity includes sanitized primitive state/attribute value paths; credential-like attribute keys, secret-like entities, and Home Assistant credentials are omitted. It always requires a configured `SETTINGS_TOKEN` and matching `Authorization: Bearer <SETTINGS_TOKEN>` header.
 - `POST /api/figma/preview-layout`: validates a Figma-exported layout and returns sample-rendered SVG plus normalized config for plugin preview/debug use. It requires `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
 - `PUT /api/figma/layout`: accepts `{ width: 800, height: 480, widgets }`, validates supported `text` and `metric_card` widgets and their in-frame geometry, then replaces `data.entities` and `items` in the existing YAML layout while preserving the other layout settings.
 - `GET /api/settings`: returns GUI settings with tokens masked.
