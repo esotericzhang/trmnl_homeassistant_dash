@@ -614,7 +614,8 @@ describe('figma bridge routes', () => {
         widgets: [
           { type: 'metric_card', entity: 'sensor.sleep', label: 'Sleep', valuePath: 'state', format: 'minutes', x: 20, y: 20, width: 220, height: 92 },
           { type: 'metric_card', entity: 'sensor.sleep_with_unit', unit: 'min', label: 'Sleep with unit', valuePath: 'state', format: 'minutes', x: 260, y: 20, width: 220, height: 92 },
-          { type: 'text', entity: 'sensor.weather', unit: '°F', label: 'First temp', valuePath: 'attributes.forecast.0.temperature', x: 20, y: 130, width: 220, height: 32 }
+          { type: 'text', entity: 'sensor.weather', unit: '°F', label: 'First temp', valuePath: 'attributes.forecast.0.temperature', x: 20, y: 130, width: 220, height: 32 },
+          { type: 'text', entity: 'sensor.blank_label', label: '', x: 20, y: 180, width: 220, height: 32 }
         ]
       })
     })
@@ -624,6 +625,7 @@ describe('figma bridge routes', () => {
     expect(body.items[0].value).toBe('{{ sleep | minutes }}')
     expect(body.items[1].value).toBe('{{ sleepWithUnit | minutes }}')
     expect(body.items[2]).toMatchObject({ text: '{{ weather }}', prefix: 'First temp: ' })
+    expect(body.items[3]).toMatchObject({ text: '{{ blankLabel }}', prefix: '' })
     expect(body.data.selectors).toEqual({ weather: 'attributes.forecast.0.temperature' })
   })
 

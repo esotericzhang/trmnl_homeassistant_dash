@@ -583,7 +583,7 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
     type: 'text',
     text: source ? placeholder : (widget.staticText ?? widget.label ?? 'Text'),
     literal: source ? undefined : true,
-    prefix: source ? `${widget.label ?? widget.entity}: ` : undefined,
+    prefix: source ? ((widget.label ?? widget.entity) ? `${widget.label ?? widget.entity}: ` : '') : undefined,
     suffix: source ? (unit || undefined) : undefined
   }
 }
