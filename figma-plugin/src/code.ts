@@ -303,6 +303,11 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
       warnings.push(`${node.name}: skipped because it differs from the supported metric-card template.`)
       return null
     }
+    const valueBinding = readBinding(parts.value)
+    if (!valueBinding || !sameValueBinding(binding, valueBinding)) {
+      warnings.push(`${node.name}: skipped because its value binding differs from the metric card binding.`)
+      return null
+    }
     if (parts.label.characters.length > MAX_METRIC_LABEL_LENGTH) {
       warnings.push(`${node.name}: skipped because its label exceeds ${MAX_METRIC_LABEL_LENGTH} characters.`)
       return null
@@ -526,6 +531,16 @@ function readBinding(node: BaseNode): { entity_id: string; binding_type: string;
     value_path: node.getPluginData('value_path') || 'state',
     format: node.getPluginData('format') || ''
   }
+}
+
+function sameValueBinding(
+  left: { entity_id: string; unit: string | null; value_path: string; format: string },
+  right: { entity_id: string; unit: string | null; value_path: string; format: string }
+): boolean {
+  return left.entity_id === right.entity_id
+    && left.unit === right.unit
+    && left.value_path === right.value_path
+    && left.format === right.format
 }
 
 function textLabel(node: TextNode, fallback: string): string | null {

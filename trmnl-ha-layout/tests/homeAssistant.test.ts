@@ -137,4 +137,16 @@ describe('HomeAssistantClient', () => {
     const attributes = Object.create({ temperature: 72 }) as Record<string, unknown>
     expect(selectStateValue({ entity_id: 'sensor.test', state: '42', attributes }, 'attributes.temperature')).toBeUndefined()
   })
+
+  it.each([
+    ['attributes.forecast', [{ temperature: 72 }]],
+    ['attributes.details', { temperature: 72 }]
+  ])('rejects non-primitive selected value at %s', (path, selectedValue) => {
+    const attribute = path.split('.')[1]
+    expect(selectStateValue({
+      entity_id: 'sensor.test',
+      state: '42',
+      attributes: { [attribute]: selectedValue }
+    }, path)).toBeUndefined()
+  })
 })

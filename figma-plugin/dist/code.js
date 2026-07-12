@@ -256,6 +256,11 @@ function exportNode(node, frame, warnings) {
             warnings.push(`${node.name}: skipped because it differs from the supported metric-card template.`);
             return null;
         }
+        const valueBinding = readBinding(parts.value);
+        if (!valueBinding || !sameValueBinding(binding, valueBinding)) {
+            warnings.push(`${node.name}: skipped because its value binding differs from the metric card binding.`);
+            return null;
+        }
         if (parts.label.characters.length > MAX_METRIC_LABEL_LENGTH) {
             warnings.push(`${node.name}: skipped because its label exceeds ${MAX_METRIC_LABEL_LENGTH} characters.`);
             return null;
@@ -486,6 +491,12 @@ function readBinding(node) {
         value_path: node.getPluginData('value_path') || 'state',
         format: node.getPluginData('format') || ''
     };
+}
+function sameValueBinding(left, right) {
+    return left.entity_id === right.entity_id
+        && left.unit === right.unit
+        && left.value_path === right.value_path
+        && left.format === right.format;
 }
 function textLabel(node, fallback) {
     const storedValue = node.getPluginData('bound_text_value');

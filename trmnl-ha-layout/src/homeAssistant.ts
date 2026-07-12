@@ -148,7 +148,7 @@ export function selectStateValue(state: HassState, path = 'state'): unknown {
       return undefined
     }
   }
-  return value
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value) ? value : undefined
 }
 
 function sampleValue(key: string): string {
