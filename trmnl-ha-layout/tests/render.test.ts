@@ -206,6 +206,19 @@ describe('renderer', () => {
     expect(svg).not.toContain('�')
   })
 
+  it('wraps wide bold glyphs conservatively', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'wide-wrap', type: 'text', x: 0, y: 0, width: 60, height: 60, fontSize: 20, weight: 700, text: 'WWWWWW' }]
+    }
+
+    const svg = renderSvg(config, { values: {}, states: {} })
+
+    expect(svg).toContain('>WWW</text>')
+    expect(svg).not.toContain('>WWWW</text>')
+  })
+
   it('uses unique forecast clip paths for IDs with the same sanitized form', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

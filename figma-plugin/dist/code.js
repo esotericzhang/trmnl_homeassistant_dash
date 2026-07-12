@@ -541,7 +541,7 @@ function entityLine(entity) {
 function entityValue(entity) {
     const path = entity.value_path ?? 'state';
     const selectedValue = entity.values?.find(value => value.path === path);
-    const selected = selectedValue ? selectedValue.value : entity.state;
+    const selected = selectedValue?.value ?? (path === 'state' ? entity.state : undefined);
     const formatted = formatEntityValue(selected, entity.format);
     const unit = path === 'state' && !entity.format && formatted !== '—' ? (entity.unit ?? '') : '';
     return `${formatted}${unit}`;

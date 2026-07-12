@@ -543,9 +543,10 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
   const fontSize = item.fontSize ?? 18
   const lineHeight = Math.ceil(fontSize * 1.2)
   const maxLines = Math.max(Math.floor(item.height / lineHeight), 1)
-  const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize, maxLines)
+  const weight = item.weight ?? 400
+  const lines = wrapText(interpolateRaw(item.text, data.values), item.width, fontSize, numericFontWeight(weight), maxLines)
   const clipId = `clip-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
-  const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${item.weight ?? 400}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
+  const text = lines.map((line, index) => `<text x="${textX(item)}" y="${item.y + index * lineHeight}" font-size="${fontSize}" font-weight="${weight}" text-anchor="${anchor(item)}">${escapeXml(line)}</text>`).join('')
   return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" /></clipPath></defs><g clip-path="url(#${clipId})">${text}</g>`
 }
 
@@ -612,8 +613,7 @@ function truncateText(text: string, maxWidth: number, fontSize: number): string 
   return `${text.slice(0, maxCharacters - 1)}…`
 }
 
-function wrapText(text: string, maxWidth: number, fontSize: number, maxLines: number): string[] {
-  const maxCharacters = Math.max(Math.floor(maxWidth / (fontSize * 0.55)), 1)
+function wrapText(text: string, maxWidth: number, fontSize: number, weight: number, maxLines: number): string[] {
   const lines: string[] = []
   for (const paragraph of text.split('\n')) {
     if (lines.length >= maxLines) break
@@ -623,23 +623,51 @@ function wrapText(text: string, maxWidth: number, fontSize: number, maxLines: nu
     }
     const characters = graphemes(paragraph)
     let start = 0
-    while (characters.length - start > maxCharacters && lines.length < maxLines) {
+    while (start < characters.length && lines.length < maxLines) {
+      let fittedEnd = start
+      let width = 0
+      while (fittedEnd < characters.length) {
+        const nextWidth = width + estimatedGraphemeWidth(characters[fittedEnd], fontSize, weight)
+        if (nextWidth > maxWidth && fittedEnd > start) break
+        width = nextWidth
+        fittedEnd++
+        if (width > maxWidth) break
+      }
+      if (fittedEnd >= characters.length) {
+        lines.push(characters.slice(start).join(''))
+        break
+      }
       let breakAt = -1
-      const limit = Math.min(start + maxCharacters + 1, characters.length)
-      for (let index = limit - 1; index > start; index--) {
+      for (let index = fittedEnd - 1; index > start; index--) {
         if (characters[index] === ' ') {
           breakAt = index
           break
         }
       }
-      const end = breakAt > start ? breakAt : start + maxCharacters
+      const end = breakAt > start ? breakAt : fittedEnd
       lines.push(characters.slice(start, end).join(''))
       start = end
       while (characters[start]?.trim() === '') start++
     }
-    if (lines.length < maxLines) lines.push(characters.slice(start).join(''))
   }
   return lines
+}
+
+function estimatedGraphemeWidth(grapheme: string, fontSize: number, weight: number): number {
+  let em = 0.58
+  if (/^\s$/u.test(grapheme)) em = 0.34
+  else if (/^[ilIjtfr1.,'`:;|!]$/u.test(grapheme)) em = 0.36
+  else if (/^[MW@#%&QO0]$/u.test(grapheme)) em = 0.9
+  else if (/^[A-Z]$/u.test(grapheme)) em = 0.72
+  else if (/^[\p{Extended_Pictographic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(grapheme)) em = 1
+  return fontSize * em * (weight >= 700 ? 1.06 : weight >= 500 ? 1.03 : 1)
+}
+
+function numericFontWeight(weight: number | string): number {
+  if (typeof weight === 'number') return weight
+  if (weight === 'bold' || weight === 'bolder') return 700
+  const parsed = Number(weight)
+  return Number.isFinite(parsed) ? parsed : 400
 }
 
 function graphemes(text: string): string[] {
