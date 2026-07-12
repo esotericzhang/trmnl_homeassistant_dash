@@ -357,7 +357,10 @@ describe('figma bridge routes', () => {
             friendly_name: 'https://example.test?token=name-secret',
             unit_of_measurement: 'token=unit-secret',
             device_class: 'session=device-secret',
-            forecast: [{ temperature: 61, condition: 'cloudy', pin: '1234', url: 'https://example.test?token=secret' }],
+            forecast: [{ temperature: 61, condition: 'cloudy', pin: 1234, access_code: true, url: 'https://example.test?token=secret' }],
+            current: 2468,
+            native_value: 3579,
+            status: false,
             api_key: 'must-not-leak',
             session: 'must-not-leak-either'
           }
@@ -413,6 +416,8 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('secret-ha-token')
     expect(JSON.stringify(body)).not.toContain('must-not-leak')
     expect(JSON.stringify(body)).not.toContain('1234')
+    expect(JSON.stringify(body)).not.toContain('2468')
+    expect(JSON.stringify(body)).not.toContain('3579')
     expect(JSON.stringify(body)).not.toContain('7391')
     expect(JSON.stringify(body)).not.toContain('opaque-value')
     expect(JSON.stringify(body)).not.toContain('example.test')

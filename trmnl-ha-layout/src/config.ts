@@ -59,7 +59,15 @@ export function validateLayoutConfig(config: LayoutConfig): void {
       if (!isSafeValuePath(selector)) throw new LayoutConfigError(`data.selectors.${key} has an unsupported path`)
     }
   }
-  config.items.forEach(validateItem)
+  const itemIds = new Set<string>()
+  config.items.forEach((item) => {
+    if (typeof item.id !== 'string' || item.id.trim().length === 0) {
+      throw new LayoutConfigError('item id must be a non-empty string')
+    }
+    if (itemIds.has(item.id)) throw new LayoutConfigError(`item id ${item.id} must be unique`)
+    itemIds.add(item.id)
+    validateItem(item)
+  })
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

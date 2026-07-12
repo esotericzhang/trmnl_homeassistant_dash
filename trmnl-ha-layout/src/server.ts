@@ -417,15 +417,19 @@ function sanitizeAttributeValues(attributes: Record<string, unknown>): FigmaEnti
 }
 
 const ALLOWED_ATTRIBUTE_KEYS = new Set([
-  'apparent_temperature', 'battery_level', 'cloud_coverage', 'condition', 'current', 'datetime',
+  'apparent_temperature', 'battery_level', 'cloud_coverage', 'condition', 'datetime',
   'dew_point', 'distance', 'duration', 'energy', 'forecast', 'frequency', 'humidity', 'mode',
-  'native_value', 'ozone', 'percentage', 'power', 'precipitation', 'precipitation_probability',
-  'pressure', 'status', 'temperature', 'templow', 'uv_index', 'visibility', 'voltage', 'volume',
+  'ozone', 'percentage', 'power', 'precipitation', 'precipitation_probability', 'pressure',
+  'temperature', 'templow', 'uv_index', 'visibility', 'voltage', 'volume',
   'wind_bearing', 'wind_gust_speed', 'wind_speed'
 ])
 
 function isAllowedAttributeKey(key: string): boolean {
-  return ALLOWED_ATTRIBUTE_KEYS.has(key)
+  return ALLOWED_ATTRIBUTE_KEYS.has(key) && !isSecretLikeKey(key)
+}
+
+function isSecretLikeKey(key: string): boolean {
+  return /(?:^|_)(?:access|api|auth|code|cookie|credential|key|passcode|password|pin|secret|session|signature|token|webhook)(?:_|$)/i.test(key)
 }
 
 function isPrimitive(value: unknown): value is string | number | boolean | null {

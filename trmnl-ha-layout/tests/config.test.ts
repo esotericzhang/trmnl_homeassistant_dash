@@ -44,4 +44,16 @@ describe('layout config', () => {
     config.data.selectors = { minutesAsleep: 42 } as unknown as Record<string, string>
     expect(() => validateLayoutConfig(config)).toThrow('must be a string map')
   })
+
+  it('requires non-empty unique item ids', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    config.items[0].id = ''
+    expect(() => validateLayoutConfig(config)).toThrow('item id must be a non-empty string')
+
+    config.items[0].id = config.items[1].id
+    expect(() => validateLayoutConfig(config)).toThrow(`item id ${config.items[1].id} must be unique`)
+
+    config.items[0].id = 42 as unknown as string
+    expect(() => validateLayoutConfig(config)).toThrow('item id must be a non-empty string')
+  })
 })
