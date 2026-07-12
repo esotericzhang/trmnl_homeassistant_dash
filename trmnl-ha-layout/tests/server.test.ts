@@ -366,7 +366,9 @@ describe('figma bridge routes', () => {
           entity_id: 'input_text.access_code',
           state: '1234',
           attributes: { friendly_name: 'Access code' }
-        }
+        },
+        { entity_id: 'sensor.door_pin', state: '7391', attributes: { friendly_name: 'Door PIN' } },
+        { entity_id: 'sensor.api_credential', state: 'opaque-value', attributes: { device_class: 'temperature' } }
       ]), { status: 200 })
     }) as typeof fetch
 
@@ -376,6 +378,24 @@ describe('figma bridge routes', () => {
     const body = await res.json() as { source: string; entities: Array<Record<string, unknown>> }
     expect(body.source).toBe('live')
     expect(body.entities).toEqual([
+      {
+        entity_id: 'sensor.api_credential',
+        name: 'sensor.api_credential',
+        state: '—',
+        unit: null,
+        domain: 'sensor',
+        device_class: 'temperature',
+        values: [{ path: 'state', label: 'State', value: '—' }]
+      },
+      {
+        entity_id: 'sensor.door_pin',
+        name: 'Door PIN',
+        state: '—',
+        unit: null,
+        domain: 'sensor',
+        device_class: null,
+        values: [{ path: 'state', label: 'State', value: '—' }]
+      },
       {
         entity_id: 'sensor.temperature',
         name: 'sensor.temperature',
@@ -393,6 +413,8 @@ describe('figma bridge routes', () => {
     expect(JSON.stringify(body)).not.toContain('secret-ha-token')
     expect(JSON.stringify(body)).not.toContain('must-not-leak')
     expect(JSON.stringify(body)).not.toContain('1234')
+    expect(JSON.stringify(body)).not.toContain('7391')
+    expect(JSON.stringify(body)).not.toContain('opaque-value')
     expect(JSON.stringify(body)).not.toContain('example.test')
     expect(JSON.stringify(body)).not.toContain('unit-secret')
     expect(JSON.stringify(body)).not.toContain('device-secret')
@@ -466,6 +488,28 @@ describe('figma bridge routes', () => {
     expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
     expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', x: 20, y: 18, width: 220, height: 32 })
     expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}°F' })
+  })
+
+  it('PUT /api/figma/layout preserves explicitly empty static text', async () => {
+    const res = await fetch(`${baseUrl}/api/figma/layout`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', staticText: '', x: 20, y: 18, width: 220, height: 32 }] })
+    })
+
+    expect(res.ok).toBe(true)
+    expect((await res.json()).items[0].text).toBe('')
+  })
+
+  it('PUT /api/config returns 400 for invalid client layout data', async () => {
+    const res = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame: { width: 800, height: 480 }, data: { entities: {}, selectors: { missing: 'state' } }, items: [] })
+    })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain('must reference an existing entity key')
   })
 
   it('PUT /api/figma/layout reuses sources for repeated entity bindings', async () => {

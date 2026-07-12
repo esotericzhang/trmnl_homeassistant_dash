@@ -549,7 +549,8 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
 }
 
 function renderMetric(item: MetricItem, data: RenderData): string {
-  return `<g transform="translate(${item.x},${item.y})">
+  const clipId = `clip-metric-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  return `<defs><clipPath id="${clipId}"><rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" rx="10" /></clipPath></defs><g clip-path="url(#${clipId})" transform="translate(${item.x},${item.y})">
     <rect width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
     <text x="16" y="14" font-size="18" class="muted">${escapeXml(item.label)}</text>
     <text x="16" y="46" font-size="${item.fontSize ?? 30}" font-weight="700">${interpolate(item.value, data.values)}</text>

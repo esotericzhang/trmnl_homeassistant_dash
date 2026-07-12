@@ -40,21 +40,23 @@ export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayou
   return loadLayoutConfig(layoutPath)
 }
 
+export class LayoutConfigError extends Error {}
+
 export function validateLayoutConfig(config: LayoutConfig): void {
   if (!config?.frame || !config?.data?.entities || !Array.isArray(config.items)) {
-    throw new Error('Layout must include frame, data.entities, and items')
+    throw new LayoutConfigError('Layout must include frame, data.entities, and items')
   }
   for (const key of ['width', 'height'] as const) {
     if (!Number.isFinite(config.frame[key]) || config.frame[key] <= 0) {
-      throw new Error(`frame.${key} must be a positive number`)
+      throw new LayoutConfigError(`frame.${key} must be a positive number`)
     }
   }
-  if (!isStringRecord(config.data.entities)) throw new Error('data.entities must be a string map')
+  if (!isStringRecord(config.data.entities)) throw new LayoutConfigError('data.entities must be a string map')
   if (config.data.selectors !== undefined) {
-    if (!isStringRecord(config.data.selectors)) throw new Error('data.selectors must be a string map')
+    if (!isStringRecord(config.data.selectors)) throw new LayoutConfigError('data.selectors must be a string map')
     for (const [key, selector] of Object.entries(config.data.selectors)) {
-      if (!(key in config.data.entities)) throw new Error(`data.selectors.${key} must reference an existing entity key`)
-      if (!isSafeValuePath(selector)) throw new Error(`data.selectors.${key} has an unsupported path`)
+      if (!(key in config.data.entities)) throw new LayoutConfigError(`data.selectors.${key} must reference an existing entity key`)
+      if (!isSafeValuePath(selector)) throw new LayoutConfigError(`data.selectors.${key} has an unsupported path`)
     }
   }
   config.items.forEach(validateItem)
@@ -71,10 +73,10 @@ function isSafeValuePath(value: string): boolean {
 
 function validateItem(item: LayoutItem): void {
   for (const key of ['x', 'y', 'width', 'height'] as const) {
-    if (!Number.isFinite(item[key])) throw new Error(`item ${item.id} has invalid ${key}`)
+    if (!Number.isFinite(item[key])) throw new LayoutConfigError(`item ${item.id} has invalid ${key}`)
   }
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
-    throw new Error(`item ${item.id} has unsupported type ${item.type}`)
+    throw new LayoutConfigError(`item ${item.id} has unsupported type ${item.type}`)
   }
 }
 

@@ -194,6 +194,18 @@ describe('renderer', () => {
     expect(svg).not.toContain('&amp</text>')
   })
 
+  it('clips metric contents to the card bounds', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'small-card', type: 'metric', x: 10, y: 20, width: 80, height: 24, label: 'Label', value: '123', fontSize: 40 }]
+    }
+
+    const svg = renderSvg(config, { values: {}, states: {} })
+    expect(svg).toContain('<clipPath id="clip-metric-small-card"><rect x="10" y="20" width="80" height="24" rx="10" /></clipPath>')
+    expect(svg).toContain('<g clip-path="url(#clip-metric-small-card)" transform="translate(10,20)">')
+  })
+
   it('uses render-local clip ids for text items with colliding ids', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

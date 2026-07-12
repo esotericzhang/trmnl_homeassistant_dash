@@ -299,9 +299,13 @@ function exportNode(node: SceneNode, frame: FrameNode, warnings: string[]): Expo
   return null
 }
 
-function exportTree(node: SceneNode, frame: FrameNode, clip: Bounds, widgets: ExportedWidget[], warnings: string[]): number {
+function exportTree(node: SceneNode, frame: FrameNode, clip: Bounds, widgets: ExportedWidget[], warnings: string[], ancestorOpacity = 1): number {
   if ('visible' in node && !node.visible) return 0
   if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true') return 0
+
+  const effectiveOpacity = ancestorOpacity * ('opacity' in node ? node.opacity : 1)
+  if (effectiveOpacity <= 0.001) return 0
+  if (effectiveOpacity < 0.999) warnings.push(`${node.name}: opacity cannot be represented and will export as fully opaque.`)
 
   const binding = readBinding(node)
   if (binding?.widget_type === 'metric_label' || binding?.widget_type === 'metric_value') return 0
@@ -323,14 +327,39 @@ function exportTree(node: SceneNode, frame: FrameNode, clip: Bounds, widgets: Ex
       ? intersectBounds(clip, node.absoluteBoundingBox)
       : clip
     if (childClip) {
-      for (const child of node.children) exportedDescendants += exportTree(child, frame, childClip, widgets, warnings)
+      for (const child of node.children) exportedDescendants += exportTree(child, frame, childClip, widgets, warnings, effectiveOpacity)
+    } else if (node.children.some(hasExportableContent)) {
+      warnings.push(`${node.name}: skipped exportable content because ancestor clipping excludes it.`)
     }
   }
 
-  if (exportedDescendants === 0 && isUnsupportedVisualNode(node)) {
+  if (exportedDescendants > 0 && hasUnsupportedContainerStyle(node)) {
+    warnings.push(`${node.name}: container fills, strokes, or effects cannot be represented and will be omitted.`)
+  } else if (exportedDescendants === 0 && isUnsupportedVisualNode(node)) {
     warnings.push(`${node.name}: skipped visible ${node.type.toLowerCase()} because this export type is unsupported.`)
   }
   return exportedDescendants
+}
+
+function hasExportableContent(node: SceneNode): boolean {
+  if ('visible' in node && !node.visible) return false
+  if ('opacity' in node && node.opacity <= 0.001) return false
+  if ('getPluginData' in node && node.getPluginData('trmnl_non_exportable') === 'true') return false
+  const binding = readBinding(node)
+  if (node.type === 'TEXT' || binding?.widget_type === 'metric_card') return true
+  if (binding?.widget_type === 'metric_label' || binding?.widget_type === 'metric_value') return false
+  return 'children' in node && node.children.some(hasExportableContent)
+}
+
+function hasUnsupportedContainerStyle(node: SceneNode): boolean {
+  if (!('children' in node) || readBinding(node)?.widget_type === 'metric_card') return false
+  return hasVisiblePaint('fills' in node ? node.fills : [])
+    || hasVisiblePaint('strokes' in node ? node.strokes : [])
+    || ('effects' in node && node.effects.some(effect => effect.visible !== false))
+}
+
+function hasVisiblePaint(paints: readonly Paint[] | PluginAPI['mixed']): boolean {
+  return paints !== figma.mixed && paints.some(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001)
 }
 
 function isClipped(node: SceneNode, clip: Bounds): boolean {

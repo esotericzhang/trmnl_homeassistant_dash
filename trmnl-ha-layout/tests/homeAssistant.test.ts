@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HomeAssistantClient } from '../src/homeAssistant.js'
+import { HomeAssistantClient, sampleRenderData } from '../src/homeAssistant.js'
 
 describe('HomeAssistantClient', () => {
   it('fetches an entity state with bearer auth', async () => {
@@ -67,5 +67,15 @@ describe('HomeAssistantClient', () => {
 
     expect(requests).toBe(1)
     expect(data.values).toMatchObject({ temperature: 61, condition: 'cloudy' })
+  })
+
+  it('uses a representative fallback for arbitrary sample sources', () => {
+    const data = sampleRenderData({
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { kitchenTemperature: 'sensor.kitchen_temperature' } },
+      items: []
+    })
+
+    expect(data.values.kitchenTemperature).toBe('42')
   })
 })

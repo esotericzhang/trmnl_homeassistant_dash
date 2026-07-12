@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
   getAddonOptions,
+  LayoutConfigError,
   loadLayoutConfig,
   loadSettings,
   loadSettingsMasked,
@@ -303,10 +304,12 @@ app.get('/preview', (_req, res) => {
   res.type('html').send(`<!doctype html><html><head><title>TRMNL HA Layout</title><style>body{font-family:system-ui;margin:24px} iframe{border:1px solid #333;width:800px;height:480px}.row{display:flex;gap:12px;align-items:center}</style></head><body><h1>TRMNL HA Layout</h1><div class="row"><button id="refresh-push">Refresh and push</button><a href="/screen.png?sample=1">Sample PNG</a><a href="/screen.svg?sample=1">Sample SVG</a><a href="/render?sample=1">Sample HTML</a><a href="/editor">Editor</a></div><p>Live preview uses configured Home Assistant token. Add <code>?sample=1</code> to use sample data.</p><iframe src="/render?sample=1"></iframe><script>function authHeaders(){const token=sessionStorage.getItem('trmnl_settings_token')||'';return token?{Authorization:'Bearer '+token}:{}}document.getElementById('refresh-push').addEventListener('click',()=>fetch('/api/refresh',{method:'POST',headers:authHeaders()}).then(r=>r.json()).then(j=>alert(JSON.stringify(j,null,2))))</script></body></html>`)
 })
 
-app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
   void next
   const message = error instanceof Error ? error.message : String(error)
-  const status = error instanceof FigmaLayoutError ? 400 : 500
+  const isClientLayoutError = error instanceof FigmaLayoutError
+    || (error instanceof LayoutConfigError && req.method === 'PUT' && req.path === '/api/config')
+  const status = isClientLayoutError ? 400 : 500
   res.status(status).json({ status: 'error', message })
 })
 
@@ -363,7 +366,7 @@ function isSupportedFigmaEntity(state: HassState): boolean {
 
 function sanitizeEntity(state: HassState): FigmaEntity {
   const attributes = state.attributes ?? {}
-  const sanitizedState = sanitizePrimitive(state.state)
+  const sanitizedState = isSecretLikeEntity(state) ? undefined : sanitizePrimitive(state.state)
   return {
     entity_id: state.entity_id,
     name: sanitizedStringAttribute(attributes.friendly_name) ?? state.entity_id,
@@ -376,6 +379,13 @@ function sanitizeEntity(state: HassState): FigmaEntity {
       ...sanitizeAttributeValues(attributes)
     ]
   }
+}
+
+function isSecretLikeEntity(state: HassState): boolean {
+  const objectId = state.entity_id.split('.').slice(1).join('.')
+  const deviceClass = typeof state.attributes?.device_class === 'string' ? state.attributes.device_class : ''
+  return /(?:^|_)(?:access|api|auth|code|cookie|credential|key|passcode|password|pin|secret|session|token|webhook)(?:_|$)/i.test(objectId)
+    || /^(?:code|key|password|secret|token)$/i.test(deviceClass)
 }
 
 function sanitizeAttributeValues(attributes: Record<string, unknown>): FigmaEntity['values'] {
@@ -541,7 +551,7 @@ function widgetToItem(widget: FigmaWidget, index: number, entities: Record<strin
   return {
     ...base,
     type: 'text',
-    text: source ? `${widget.label || widget.entity}: ${placeholder}${unit}` : (widget.staticText || widget.label || 'Text')
+    text: source ? `${widget.label || widget.entity}: ${placeholder}${unit}` : (widget.staticText ?? widget.label ?? 'Text')
   }
 }
 

@@ -108,5 +108,5 @@ function sampleValue(key: string): string {
     sunNextRising: '2026-06-24T05:47:00-07:00',
     sunNextSetting: '2026-06-24T20:34:00-07:00'
   }
-  return values[key] ?? 'unknown'
+  return values[key] ?? '42'
 }
