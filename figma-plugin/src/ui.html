@@ -35,7 +35,8 @@
     let entities = [];
     let entitySource = 'unknown';
     let exportedLayout = null;
-    let exportAction = 'preview';
+    let nextExportRequestId = 1;
+    const exportActions = new Map();
     const status = message => { $('status').textContent = message; };
     const backend = () => $('backend-url').value.trim().replace(/\/$/, '') || 'http://localhost:10000';
     const dashboardToken = () => $('dashboard-token').value.trim();
@@ -78,12 +79,17 @@
       status('Loaded '+entities.length+' sanitized entities from '+entitySource+' data. HA tokens are never sent to this plugin.');
     }
     async function saveDashboard() {
-      exportAction = 'save';
       exportedLayout = null;
       $('save-dashboard').disabled = true;
+      $('export-selected').disabled = true;
       $('export-output').textContent = '';
       status('Exporting current frame before saving...');
-      send({ type:'export-selected' });
+      requestExport('save');
+    }
+    function requestExport(action) {
+      const requestId = nextExportRequestId++;
+      exportActions.set(requestId, action);
+      send({ type:'export-selected', requestId });
     }
     async function persistExport(layout) {
       status('Saving layout to dashboard...');
@@ -100,12 +106,12 @@
       .then(() => send({ type:'refresh-selected', entities }))
       .catch(e => status('Refresh failed: '+e.message));
     $('export-selected').onclick = () => {
-      exportAction = 'preview';
       exportedLayout = null;
       $('save-dashboard').disabled = true;
+      $('export-selected').disabled = true;
       $('export-output').textContent = '';
       status('Exporting selected frame...');
-      send({ type:'export-selected' });
+      requestExport('preview');
     };
     $('save-dashboard').onclick = () => saveDashboard().catch(e => status('Save failed: '+e.message));
     $('open-preview').onclick = () => window.open(backend() + '/preview', '_blank');
@@ -116,16 +122,21 @@
       if (msg.type === 'stored-dashboard-token') $('dashboard-token').value = msg.token || '';
       if (msg.type === 'status') status(msg.message);
       if (msg.type === 'error') {
+        exportActions.clear();
         exportedLayout = null;
         $('save-dashboard').disabled = true;
+        $('export-selected').disabled = false;
         status('Error: '+msg.message);
       }
       if (msg.type === 'export-result') {
+        const action = exportActions.get(msg.requestId);
+        if (!action) return;
+        exportActions.delete(msg.requestId);
         exportedLayout = msg.layout;
         $('export-output').textContent = JSON.stringify(msg.layout, null, 2) + (msg.warnings.length ? '\n\nWarnings:\n- ' + msg.warnings.join('\n- ') : '');
         $('save-dashboard').disabled = false;
-        if (exportAction === 'save') {
-          exportAction = 'preview';
+        $('export-selected').disabled = false;
+        if (action === 'save') {
           const risky = msg.warnings.length || msg.layout.widgets.length === 0;
           const detail = msg.warnings.length ? msg.warnings.join('\n') : 'The export contains no widgets and will clear the dashboard layout.';
           if (risky && !confirm(detail + '\n\nSave this export anyway?')) {

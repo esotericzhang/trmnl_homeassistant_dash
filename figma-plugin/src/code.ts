@@ -41,14 +41,14 @@ type PluginMessage =
   | { type: 'insert-text'; entity: FigmaEntity }
   | { type: 'insert-card'; entity: FigmaEntity }
   | { type: 'refresh-selected'; entities: FigmaEntity[] }
-  | { type: 'export-selected' }
+  | { type: 'export-selected'; requestId: number }
 
 type UiMessage =
   | { type: 'stored-backend-url'; url: string }
   | { type: 'stored-dashboard-token'; token: string }
   | { type: 'status'; message: string }
   | { type: 'error'; message: string }
-  | { type: 'export-result'; layout: ExportedLayout; warnings: string[] }
+  | { type: 'export-result'; requestId: number; layout: ExportedLayout; warnings: string[] }
 
 type BoundNode = SceneNode & PluginDataMixin
 type Bounds = { x: number; y: number; width: number; height: number }
@@ -84,7 +84,7 @@ figma.ui.onmessage = async (message: PluginMessage) => {
     } else if (message.type === 'refresh-selected') {
       await refreshSelected(message.entities)
     } else if (message.type === 'export-selected') {
-      exportSelectedFrame()
+      exportSelectedFrame(message.requestId)
     }
   } catch (error) {
     post({ type: 'error', message: error instanceof Error ? error.message : String(error) })
@@ -228,7 +228,7 @@ async function refreshSelected(entities: FigmaEntity[]): Promise<void> {
   post({ type: 'status', message: updated ? `Refreshed ${updated} bound text node(s).` : 'No selected bound text nodes matched loaded entities.' })
 }
 
-function exportSelectedFrame(): void {
+function exportSelectedFrame(requestId: number): void {
   const frame = selectedExportFrame()
   const warnings: string[] = []
   const widgets: ExportedWidget[] = []
@@ -241,7 +241,7 @@ function exportSelectedFrame(): void {
   const clip = ancestorClipBounds(frame, frameBounds)
   if (!clip) throw new Error('Export frame is fully clipped by an ancestor.')
   for (const child of frame.children) exportTree(child, frame, clip, widgets, warnings)
-  post({ type: 'export-result', layout: { width: 800, height: 480, widgets }, warnings })
+  post({ type: 'export-result', requestId, layout: { width: 800, height: 480, widgets }, warnings })
 }
 
 function selectedTrmnlFrame(): FrameNode {
@@ -553,7 +553,6 @@ function metricCardParts(node: SceneNode, warnings: string[]): { label: TextNode
   if (!hasCanonicalMetricCardStyle(node) || !hasCanonicalMetricPart(label, node, 'label') || !hasCanonicalMetricPart(value, node, 'value')) return null
   for (const part of [label, value]) {
     if (!hasRepresentableTypography(part, warnings)) return null
-    if (!hasRepresentableTextPaint(part, warnings)) return null
   }
   if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox)) return null
   return { label, value }

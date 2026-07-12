@@ -35,7 +35,7 @@ figma.ui.onmessage = async (message) => {
             await refreshSelected(message.entities);
         }
         else if (message.type === 'export-selected') {
-            exportSelectedFrame();
+            exportSelectedFrame(message.requestId);
         }
     }
     catch (error) {
@@ -173,7 +173,7 @@ async function refreshSelected(entities) {
     }
     post({ type: 'status', message: updated ? `Refreshed ${updated} bound text node(s).` : 'No selected bound text nodes matched loaded entities.' });
 }
-function exportSelectedFrame() {
+function exportSelectedFrame(requestId) {
     const frame = selectedExportFrame();
     const warnings = [];
     const widgets = [];
@@ -192,7 +192,7 @@ function exportSelectedFrame() {
         throw new Error('Export frame is fully clipped by an ancestor.');
     for (const child of frame.children)
         exportTree(child, frame, clip, widgets, warnings);
-    post({ type: 'export-result', layout: { width: 800, height: 480, widgets }, warnings });
+    post({ type: 'export-result', requestId, layout: { width: 800, height: 480, widgets }, warnings });
 }
 function selectedTrmnlFrame() {
     const selected = figma.currentPage.selection[0];
@@ -517,8 +517,6 @@ function metricCardParts(node, warnings) {
         return null;
     for (const part of [label, value]) {
         if (!hasRepresentableTypography(part, warnings))
-            return null;
-        if (!hasRepresentableTextPaint(part, warnings))
             return null;
     }
     if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox))

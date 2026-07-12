@@ -41,6 +41,12 @@ describe('HomeAssistantClient', () => {
     await expect(oversizedClient.getStates()).rejects.toThrow('exceeds 10000 entities')
   })
 
+  it('rejects an oversized all-states body before parsing', async () => {
+    const client = new HomeAssistantClient('http://ha.local:8123', 'secret', (async () =>
+      new Response(' '.repeat(10 * 1024 * 1024 + 1), { status: 200 })) as typeof fetch)
+    await expect(client.getStates()).rejects.toThrow('exceeds 10485760 bytes')
+  })
+
   it('applies a timeout signal to the all-states request', async () => {
     let signal: AbortSignal | null | undefined
     const client = new HomeAssistantClient('http://ha.local:8123', 'secret', (async (_url, init) => {

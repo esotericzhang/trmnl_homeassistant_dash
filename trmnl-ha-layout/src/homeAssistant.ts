@@ -3,6 +3,7 @@ import { isSafeValuePath } from './config.js'
 
 const STATES_TIMEOUT_MS = 10_000
 const MAX_STATES = 10_000
+const MAX_STATES_RESPONSE_BYTES = 10 * 1024 * 1024
 
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
@@ -25,7 +26,7 @@ export class HomeAssistantClient {
       signal: AbortSignal.timeout(STATES_TIMEOUT_MS)
     })
     if (!response.ok) throw new Error(`Home Assistant states failed: ${response.status}`)
-    const states: unknown = await response.json()
+    const states: unknown = JSON.parse(await readBoundedResponse(response, MAX_STATES_RESPONSE_BYTES))
     if (!Array.isArray(states)) throw new Error('Home Assistant states response must be an array')
     if (states.length > MAX_STATES) throw new Error(`Home Assistant states response exceeds ${MAX_STATES} entities`)
     if (!states.every(isHassState)) throw new Error('Home Assistant states response contains an invalid entity')
@@ -41,6 +42,29 @@ export class HomeAssistantClient {
     const values = Object.fromEntries(entries.map(([key, state]) => [key, selectStateValue(state, config.data.selectors?.[key])]))
     return { values, states }
   }
+}
+
+async function readBoundedResponse(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new Error(`Home Assistant states response exceeds ${maxBytes} bytes`)
+  }
+  if (!response.body) return response.text()
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let bytes = 0
+  let body = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytes += value.byteLength
+    if (bytes > maxBytes) {
+      await reader.cancel()
+      throw new Error(`Home Assistant states response exceeds ${maxBytes} bytes`)
+    }
+    body += decoder.decode(value, { stream: true })
+  }
+  return body + decoder.decode()
 }
 
 function isHassState(value: unknown): value is HassState {
