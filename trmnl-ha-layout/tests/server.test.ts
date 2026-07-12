@@ -357,9 +357,15 @@ describe('figma bridge routes', () => {
             friendly_name: 'Temperature',
             unit_of_measurement: '°F',
             device_class: 'temperature',
-            forecast: [{ temperature: 61, condition: 'cloudy' }],
-            api_key: 'must-not-leak'
+            forecast: [{ temperature: 61, condition: 'cloudy', pin: '1234', url: 'https://example.test?token=secret' }],
+            api_key: 'must-not-leak',
+            session: 'must-not-leak-either'
           }
+        },
+        {
+          entity_id: 'input_text.access_code',
+          state: '1234',
+          attributes: { friendly_name: 'Access code' }
         }
       ]), { status: 200 })
     }) as typeof fetch
@@ -386,19 +392,20 @@ describe('figma bridge routes', () => {
     ])
     expect(JSON.stringify(body)).not.toContain('secret-ha-token')
     expect(JSON.stringify(body)).not.toContain('must-not-leak')
+    expect(JSON.stringify(body)).not.toContain('1234')
+    expect(JSON.stringify(body)).not.toContain('example.test')
   })
 
-  it('GET /api/figma/entities allows no-token production access when no settings token is configured', async () => {
+  it('GET /api/figma/entities rejects no-token production access', async () => {
     const originalNodeEnv = process.env.NODE_ENV
     const existing = loadSettings()
-    saveSettings({ ...existing, haToken: '', settingsToken: undefined })
+    saveSettings({ ...existing, settingsToken: undefined })
     process.env.NODE_ENV = 'production'
 
     try {
       const res = await fetch(`${baseUrl}/api/figma/entities`)
-      expect(res.ok).toBe(true)
+      expect(res.status).toBe(401)
       expect(res.headers.get('access-control-allow-origin')).toBe('*')
-      expect((await res.json() as { source: string }).source).toBe('sample')
     } finally {
       process.env.NODE_ENV = originalNodeEnv
     }
@@ -540,4 +547,17 @@ describe('figma bridge routes', () => {
 
     expect(res.status).toBe(400)
   })
+
+  it.each(['.', 'sensor.', '.temperature', 'sensor.bad id', 'sensor.bad/path', 'Sensor.temperature'])(
+    'PUT /api/figma/layout rejects malformed entity id %s',
+    async (entity) => {
+      const res = await fetch(`${baseUrl}/api/figma/layout`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', entity, x: 10, y: 10, width: 100, height: 30 }] })
+      })
+
+      expect(res.status).toBe(400)
+    }
+  )
 })

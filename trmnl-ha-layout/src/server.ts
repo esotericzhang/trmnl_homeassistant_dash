@@ -44,6 +44,7 @@ let lastPush = 'not run'
 
 const SETTINGS_TOKEN_ENV = process.env.SETTINGS_TOKEN ?? ''
 const ALLOW_NO_AUTH = process.env.ALLOW_NO_AUTH === '1'
+const FIGMA_ENTITY_DOMAINS = new Set(['air_quality', 'binary_sensor', 'climate', 'cover', 'device_tracker', 'fan', 'humidifier', 'light', 'person', 'sensor', 'sun', 'weather'])
 
 function settingsToken(): string | undefined {
   return SETTINGS_TOKEN_ENV || stringOption(getAddonOptions(), 'settings_token') || loadSettings().settingsToken
@@ -66,17 +67,6 @@ function isMutationAuthenticated(req: express.Request): boolean {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(token))
 }
 
-function isAuthenticatedWhenTokenConfigured(req: express.Request): boolean {
-  const token = settingsToken()
-  if (!token) return true
-  const header = req.headers.authorization ?? ''
-  const expected = header.startsWith('Bearer ') ? header.slice(7) : ''
-  if (typeof expected !== 'string' || typeof token !== 'string' || expected.length !== token.length) {
-    return false
-  }
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(token))
-}
-
 function requireMutationAuth(req: express.Request, res: express.Response): boolean {
   if (isMutationAuthenticated(req)) return true
   res.status(401).json({ status: 'error', message: 'unauthorized' })
@@ -84,7 +74,7 @@ function requireMutationAuth(req: express.Request, res: express.Response): boole
 }
 
 function requireConfiguredTokenAuth(req: express.Request, res: express.Response): boolean {
-  if (isAuthenticatedWhenTokenConfigured(req)) return true
+  if (isMutationAuthenticated(req)) return true
   res.status(401).json({ status: 'error', message: 'unauthorized' })
   return false
 }
@@ -135,7 +125,7 @@ app.get('/api/figma/entities', async (req, res, next) => {
       : Object.values(sampleRenderData(layout).states)
     res.json({
       source: config.accessToken ? 'live' : 'sample',
-      entities: states.map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id))
+      entities: states.filter(isSupportedFigmaEntity).map(sanitizeEntity).sort((a, b) => a.entity_id.localeCompare(b.entity_id))
     })
   } catch (error) { next(error) }
 })
@@ -366,17 +356,23 @@ interface FigmaLayout {
 
 class FigmaLayoutError extends Error {}
 
+function isSupportedFigmaEntity(state: HassState): boolean {
+  const separator = state.entity_id.indexOf('.')
+  return separator > 0 && FIGMA_ENTITY_DOMAINS.has(state.entity_id.slice(0, separator))
+}
+
 function sanitizeEntity(state: HassState): FigmaEntity {
   const attributes = state.attributes ?? {}
+  const sanitizedState = sanitizePrimitive(state.state)
   return {
     entity_id: state.entity_id,
     name: stringAttribute(attributes.friendly_name) ?? state.entity_id,
-    state: String(state.state ?? ''),
+    state: sanitizedState === undefined ? '—' : String(sanitizedState),
     unit: stringAttribute(attributes.unit_of_measurement),
     domain: state.entity_id.includes('.') ? state.entity_id.split('.')[0] : null,
     device_class: stringAttribute(attributes.device_class),
     values: [
-      { path: 'state', label: 'State', value: primitiveValue(state.state) },
+      { path: 'state', label: 'State', value: sanitizedState ?? '—' },
       ...sanitizeAttributeValues(attributes)
     ]
   }
@@ -387,7 +383,8 @@ function sanitizeAttributeValues(attributes: Record<string, unknown>): FigmaEnti
   const visit = (value: unknown, path: string, depth: number): void => {
     if (values.length >= 100 || depth > 4) return
     if (isPrimitive(value)) {
-      values.push({ path, label: path.replace(/^attributes\./, ''), value })
+      const sanitized = sanitizePrimitive(value)
+      if (sanitized !== undefined) values.push({ path, label: path.replace(/^attributes\./, ''), value: sanitized })
       return
     }
     if (Array.isArray(value)) {
@@ -396,28 +393,44 @@ function sanitizeAttributeValues(attributes: Record<string, unknown>): FigmaEnti
     }
     if (value && typeof value === 'object') {
       Object.entries(value as Record<string, unknown>).slice(0, 40).forEach(([key, entry]) => {
-        if (isSensitiveAttributeKey(key) || ['friendly_name', 'unit_of_measurement', 'device_class'].includes(key)) return
+        if (!isAllowedAttributeKey(key)) return
         visit(entry, `${path}.${key}`, depth + 1)
       })
     }
   }
   Object.entries(attributes).forEach(([key, value]) => {
-    if (isSensitiveAttributeKey(key) || ['friendly_name', 'unit_of_measurement', 'device_class'].includes(key)) return
+    if (!isAllowedAttributeKey(key)) return
     visit(value, `attributes.${key}`, 1)
   })
   return values
 }
 
-function isSensitiveAttributeKey(key: string): boolean {
-  return /token|password|secret|credential|authorization|api[_-]?key/i.test(key)
+const ALLOWED_ATTRIBUTE_KEYS = new Set([
+  'apparent_temperature', 'battery_level', 'cloud_coverage', 'condition', 'current', 'datetime',
+  'dew_point', 'distance', 'duration', 'energy', 'forecast', 'frequency', 'humidity', 'mode',
+  'native_value', 'ozone', 'percentage', 'power', 'precipitation', 'precipitation_probability',
+  'pressure', 'status', 'temperature', 'templow', 'uv_index', 'visibility', 'voltage', 'volume',
+  'wind_bearing', 'wind_gust_speed', 'wind_speed'
+])
+
+function isAllowedAttributeKey(key: string): boolean {
+  return ALLOWED_ATTRIBUTE_KEYS.has(key)
 }
 
 function isPrimitive(value: unknown): value is string | number | boolean | null {
   return value === null || ['string', 'number', 'boolean'].includes(typeof value)
 }
 
-function primitiveValue(value: unknown): string | number | boolean | null {
-  return isPrimitive(value) ? value : String(value ?? '')
+function sanitizePrimitive(value: unknown): string | number | boolean | null | undefined {
+  if (!isPrimitive(value)) return undefined
+  if (typeof value !== 'string') return value
+  const normalized = value.trim()
+  if (normalized.length > 256 || [...normalized].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) return undefined
+  if (/^(?:https?|wss?):\/\//i.test(normalized)) return undefined
+  if (/^(?:bearer\s+|eyJ[a-zA-Z0-9_-]*\.)/i.test(normalized)) return undefined
+  if (/[?&](?:access_token|auth|code|credential|key|password|pin|secret|session|signature|token|webhook)=/i.test(normalized)) return undefined
+  if (/^(?:access_token|auth|code|cookie|credential|key|password|pin|secret|session|token|webhook)[:=]/i.test(normalized)) return undefined
+  return value
 }
 
 function stringAttribute(value: unknown): string | null {
@@ -467,7 +480,7 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
   if (normalized.x + normalized.width > 800 || normalized.y + normalized.height > 480) {
     throw new FigmaLayoutError(`widget ${index} is outside the 800x480 frame`)
   }
-  if (item.entity !== undefined && (typeof item.entity !== 'string' || !item.entity.includes('.'))) {
+  if (item.entity !== undefined && (typeof item.entity !== 'string' || !/^[a-z0-9_]+\.[a-z0-9_]+$/.test(item.entity))) {
     throw new FigmaLayoutError(`widget ${index} has malformed entity id`)
   }
   if (item.unit !== undefined && item.unit !== null && typeof item.unit !== 'string') {

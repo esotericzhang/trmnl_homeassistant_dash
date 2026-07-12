@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadLayoutConfig, saveLayoutConfig } from '../src/config.js'
+import { loadLayoutConfig, saveLayoutConfig, validateLayoutConfig } from '../src/config.js'
 
 describe('layout config', () => {
   it('loads default layout with positioned items', () => {
@@ -28,5 +28,20 @@ describe('layout config', () => {
 
     expect(fs.readFileSync(layoutPath, 'utf8')).toContain('Edited title')
     expect(savedTitle).toMatchObject({ id: 'title', type: 'text', x: 42, text: 'Edited title' })
+  })
+
+  it('validates selectors against entities and supported paths', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    config.data.selectors = { minutesAsleep: 'attributes.forecast.0.temperature' }
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+
+    config.data.selectors = { missing: 'state' }
+    expect(() => validateLayoutConfig(config)).toThrow('must reference an existing entity key')
+
+    config.data.selectors = { minutesAsleep: 'attributes.forecast[0].temperature' }
+    expect(() => validateLayoutConfig(config)).toThrow('unsupported path')
+
+    config.data.selectors = { minutesAsleep: 42 } as unknown as Record<string, string>
+    expect(() => validateLayoutConfig(config)).toThrow('must be a string map')
   })
 })

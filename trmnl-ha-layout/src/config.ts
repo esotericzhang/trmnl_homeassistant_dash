@@ -49,7 +49,24 @@ export function validateLayoutConfig(config: LayoutConfig): void {
       throw new Error(`frame.${key} must be a positive number`)
     }
   }
+  if (!isStringRecord(config.data.entities)) throw new Error('data.entities must be a string map')
+  if (config.data.selectors !== undefined) {
+    if (!isStringRecord(config.data.selectors)) throw new Error('data.selectors must be a string map')
+    for (const [key, selector] of Object.entries(config.data.selectors)) {
+      if (!(key in config.data.entities)) throw new Error(`data.selectors.${key} must reference an existing entity key`)
+      if (!isSafeValuePath(selector)) throw new Error(`data.selectors.${key} has an unsupported path`)
+    }
+  }
   config.items.forEach(validateItem)
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+    && Object.values(value as Record<string, unknown>).every(entry => typeof entry === 'string')
+}
+
+function isSafeValuePath(value: string): boolean {
+  return value === 'state' || /^attributes(?:\.[a-zA-Z0-9_]+)+$/.test(value)
 }
 
 function validateItem(item: LayoutItem): void {

@@ -196,7 +196,7 @@ function selectedExportFrame() {
     if (selection.length !== 1)
         throw new Error('Select exactly one TRMNL frame or one bound node inside a frame before exporting.');
     const selected = selection[0];
-    const frame = selected.type === 'FRAME' ? selected : containingFrame(selected);
+    const frame = selected.type === 'FRAME' && isTrmnlFrame(selected) ? selected : containingFrame(selected);
     if (!frame)
         throw new Error('Selected content must be inside a frame.');
     if (!isTrmnlFrame(frame))
@@ -408,6 +408,8 @@ function entityForBinding(entity, binding) {
     return { ...entity, value_path: binding.value_path, format: binding.format };
 }
 function formatEntityValue(value, format) {
+    if (value === 'unknown' || value === 'unavailable')
+        return '—';
     if (format === 'minutes') {
         const minutes = Number(value);
         if (Number.isFinite(minutes)) {
