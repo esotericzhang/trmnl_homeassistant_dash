@@ -29,7 +29,7 @@ describe('server routes', () => {
     expect(res.headers.get('location')).toBe('/editor')
   })
 
-  it('serves PNG output and editor UI with visible Connection Settings', async () => {
+  it('serves PNG output and editor UI with global connection settings', async () => {
     const png = await fetch(`${baseUrl}/screen.png?sample=1`)
     expect(png.headers.get('content-type')).toContain('image/png')
     const bytes = new Uint8Array(await png.arrayBuffer())
@@ -41,18 +41,81 @@ describe('server routes', () => {
     expect(editorHtml).toContain('id="preview-frame"')
     expect(editorHtml).toContain('src="/screen.svg?sample=1"')
     expect(editorHtml).toContain('id="overlay"')
-    expect(editorHtml).toContain('Connection Settings')
-    expect(editorHtml).toContain('<details class="settings" open>')
+    expect(editorHtml).toContain('id="global-settings"')
+    expect(editorHtml).toContain('id="global-modal" class="manager"')
+    expect(editorHtml).toContain('Global connection and authentication')
     expect(editorHtml).toContain('Terminus server URL')
     expect(editorHtml).toContain('id="terminus_api_url"')
     expect(editorHtml).toContain('Home Assistant URL')
     expect(editorHtml).toContain('id="home_assistant_url"')
-    expect(editorHtml).toContain('Screen metadata (optional)')
-    expect(editorHtml).toContain('id="terminus_model_id"')
-    expect(editorHtml).toContain('id="terminus_screen_name"')
-    expect(editorHtml).toContain('id="terminus_screen_label"')
-    expect(editorHtml).toContain('id="terminus_playlist_id"')
+    expect(editorHtml).toContain('id="destination-device"')
+    expect(editorHtml).toContain('id="destination-playlist"')
+    expect(editorHtml).toContain('id="model-id"')
+    expect(editorHtml).toContain('id="screen-name"')
+    expect(editorHtml).toContain('id="screen-label"')
     expect(editorHtml).not.toContain('id="terminus_screen_id"')
+  })
+
+  it('creates and edits independent schedules while legacy routes keep the default layout', async () => {
+    const listBefore = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as {
+      defaultScheduleId: string
+      schedules: Array<{ id: string }>
+    }
+    expect(listBefore.schedules.some((schedule) => schedule.id === listBefore.defaultScheduleId)).toBe(true)
+
+    const createdResponse = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Kitchen' })
+    })
+    expect(createdResponse.status).toBe(201)
+    const created = await createdResponse.json() as { id: string; name: string; enabled: boolean }
+    expect(created).toMatchObject({ name: 'Kitchen', enabled: false })
+
+    const blank = await fetch(`${baseUrl}/api/schedules/${created.id}/config`).then((response) => response.json()) as { items: unknown[] }
+    expect(blank.items).toEqual([])
+
+    const defaultConfig = await fetch(`${baseUrl}/api/config`).then((response) => response.json()) as { items: Array<{ id: string }> }
+    expect(defaultConfig.items.length).toBeGreaterThan(0)
+
+    const patched = await fetch(`${baseUrl}/api/schedules/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        timing: { kind: 'daily', time: '07:15', timezone: 'America/New_York' },
+        destination: { deviceId: 'screen-text-id', playlistId: 'playlist-text-id' }
+      })
+    }).then((response) => response.json()) as { timing: unknown; destination: unknown }
+    expect(patched.timing).toEqual({ kind: 'daily', time: '07:15', timezone: 'America/New_York' })
+    expect(patched.destination).toMatchObject({ deviceId: 'screen-text-id', playlistId: 'playlist-text-id' })
+
+    const svg = await fetch(`${baseUrl}/schedules/${created.id}/screen.svg?sample=1`)
+    expect(svg.headers.get('content-type')).toContain('image/svg+xml')
+  })
+
+  it('returns 404 for unknown schedule routes', async () => {
+    const response = await fetch(`${baseUrl}/api/schedules/missing/config`)
+    expect(response.status).toBe(404)
+  })
+
+  it('masks schedule webhook URLs and rejects client-owned status updates', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        destination: { webhookUrl: 'https://hooks.example/secret-key' },
+        status: { result: 'forged' }
+      })
+    })
+
+    const visible = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`).then((response) => response.json()) as {
+      destination: { webhookUrl: string }
+      status: { result: string | null }
+    }
+    expect(visible.destination.webhookUrl).toBe('••••')
+    expect(visible.status.result).not.toBe('forged')
   })
 
   it('serves preview refresh with stored bearer token', async () => {

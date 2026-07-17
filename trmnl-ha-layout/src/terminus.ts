@@ -15,6 +15,7 @@ export interface TerminusPushOptions {
   screenLabel?: string
   playlistId?: string
   screenId?: string
+  screenUri?: string
 }
 
 export class TerminusClient {
@@ -39,7 +40,7 @@ export class TerminusClient {
 
   private async pushUri(options: TerminusPushOptions): Promise<string> {
     if (!options.publicBaseUrl) return 'skipped: ADDON_BASE_URL is required for byos-uri mode'
-    const uri = new URL('/screen.png', options.publicBaseUrl).toString()
+    const uri = new URL(options.screenUri ?? '/screen.png', options.publicBaseUrl).toString()
     return this.postScreen(options, { uri, preprocessed: true, file_name: this.fileName(options) })
   }
 
@@ -229,5 +230,18 @@ export function terminusOptionsFromEnv(): TerminusPushOptions {
     screenLabel: envString('TERMINUS_SCREEN_LABEL') ?? stringOption(options, 'terminus_screen_label') ?? terminus.screenLabel,
     playlistId: envString('TERMINUS_PLAYLIST_ID') ?? stringOption(options, 'terminus_playlist_id') ?? terminus.playlistId,
     screenId: envString('TERMINUS_SCREEN_ID') ?? stringOption(options, 'terminus_screen_id') ?? terminus.screenId
+  }
+}
+
+export function legacyScheduleTerminusOverrides(): TerminusPushOptions {
+  const options = getAddonOptions()
+  return {
+    mode: (envString('TERMINUS_MODE') as TerminusMode | undefined) ?? (stringOption(options, 'terminus_mode') as TerminusMode | undefined),
+    webhookUrl: envString('TERMINUS_WEBHOOK_URL') ?? stringOption(options, 'terminus_webhook_url'),
+    modelId: envString('TERMINUS_MODEL_ID') ?? stringOption(options, 'terminus_model_id'),
+    screenName: envString('TERMINUS_SCREEN_NAME') ?? stringOption(options, 'terminus_screen_name'),
+    screenLabel: envString('TERMINUS_SCREEN_LABEL') ?? stringOption(options, 'terminus_screen_label'),
+    playlistId: envString('TERMINUS_PLAYLIST_ID') ?? stringOption(options, 'terminus_playlist_id'),
+    screenId: envString('TERMINUS_SCREEN_ID') ?? stringOption(options, 'terminus_screen_id')
   }
 }

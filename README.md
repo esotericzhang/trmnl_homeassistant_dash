@@ -5,12 +5,13 @@ A Home Assistant compatible add-on and standalone Docker app that renders Home A
 ## Features
 
 - Home Assistant REST API client configured from the editor settings UI, Home Assistant add-on options, or environment variables.
-- YAML layout file with explicit `x`, `y`, `width`, `height`, `fontSize`, `align`, and related positioning controls.
+- Multiple named schedules, each with its own YAML layout, enabled state, manual/interval/daily timing, destination metadata, and push status.
+- YAML layout files with explicit `x`, `y`, `width`, `height`, `fontSize`, `align`, and related positioning controls.
 - Default Sleep + Weather dashboard for the Seeed Studio TRMNL 7.5-inch OG DIY Kit, 800x480.
 - Pull endpoints for Terminus or browsers: `/screen.png`, `/screen.svg`, `/render`, `/preview`.
 - Browser layout editor at `/` and `/editor` with drag, resize, style controls, connection settings, and YAML save through `/api/config`.
 - Push endpoint/job for Terminus BYOS Hanami/JWT `/api/screens` or generic PNG webhooks.
-- Refresh scheduling through the editor settings UI or `REFRESH_INTERVAL_SECONDS`.
+- Per-schedule refresh timing through the editor. Legacy `REFRESH_INTERVAL_SECONDS` seeds the migrated default schedule.
 
 ## Standalone quick start
 
@@ -93,9 +94,11 @@ Add-on URL examples for `byos-uri`:
 
 ## Configuration and settings
 
-The editor's **Connection Settings** panel saves runtime settings to `settings.json` next to the layout file. With the default add-on layout path this is `/data/settings.json`; with a custom `LAYOUT_PATH` it is `settings.json` in the same directory as that layout; in standalone development it is `./settings.json`.
+The editor's **Global connection** panel saves shared Home Assistant and Terminus authentication settings to `settings.json` next to the legacy layout file. With the default add-on layout path this is `/data/settings.json`; with a custom `LAYOUT_PATH` it is `settings.json` in the same directory as that layout; in standalone development it is `./settings.json`.
 
-Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Refreshes re-read connection and Terminus settings before each push, so those GUI settings changes do not require a restart; changing `refresh_interval_seconds` affects scheduling after restart.
+Schedules are stored in `schedules/index.json`, with each layout at `schedules/<schedule-id>/layout.yaml`. On first startup after upgrading, the existing single `layout.yaml` and its refresh/destination settings are copied into a `default` schedule. The original files remain in place, and legacy routes continue to resolve to that persisted default schedule.
+
+Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Pushes re-read shared connection and Terminus settings. Schedule timing changes are reloaded by the coordinator without a restart; legacy `refresh_interval_seconds` applies only to the migrated default schedule.
 
 Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
@@ -122,7 +125,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 
 - `GET /health`: service status.
 - `GET /`: redirects to `/editor`.
-- `GET /screen.png`: renders the current dashboard as an 800x480 PNG.
+- `GET /screen.png`: renders the persisted default schedule as an 800x480 PNG. `?schedule_id=<id>` selects another schedule.
 - `GET /screen.svg`: renders the current dashboard as SVG.
 - `GET /render`: wraps the SVG in HTML.
 - `GET /preview`: minimal preview and refresh UI.
@@ -130,6 +133,15 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
 - `GET /api/config`: returns resolved layout configuration.
 - `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
+- `GET /api/schedules`: lists schedules and the legacy default schedule ID.
+- `POST /api/schedules`: creates a disabled blank schedule.
+- `GET /api/schedules/:id`: returns one schedule.
+- `PATCH /api/schedules/:id`: updates schedule identity, timing, destination, or status.
+- `DELETE /api/schedules/:id`: deletes a schedule when at least one other schedule remains.
+- `POST /api/schedules/:id/duplicate`: duplicates a schedule as a disabled copy with cleared remote status.
+- `GET` / `PUT /api/schedules/:id/config`: loads or saves one schedule's layout.
+- `POST /api/schedules/:id/push`: renders and pushes one schedule immediately.
+- `GET /schedules/:id/screen.png`, `/screen.svg`, `/render`: stable schedule-specific output routes.
 - `GET /api/settings`: returns GUI settings with tokens masked.
 - `PUT /api/settings`: validates and saves GUI settings, preserving already-masked stored tokens.
 - `POST /api/terminus/login`: exchanges a Terminus API URL, login, and password for stored JWT tokens.
