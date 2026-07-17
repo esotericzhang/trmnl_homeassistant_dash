@@ -554,9 +554,8 @@ function renderText(item: TextItem, data: RenderData, index: number): string {
 function renderMetric(item: MetricItem, data: RenderData, index: number): string {
   const clipId = `clip-metric-${index}-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const valueFontSize = item.fontSize ?? 30
-  const valueY = Math.max(Math.min(46, item.height - valueFontSize), 0)
-  const labelY = Math.min(14, Math.max(valueY - 22, 0))
-  const label = labelY + 18 <= valueY
+  const { valueY, labelY, showLabel } = metricPlacement(item.height, valueFontSize)
+  const label = showLabel
     ? `<text x="16" y="${labelY}" font-size="18" class="muted">${escapeXml(item.label)}</text>`
     : ''
   return `<rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
@@ -564,6 +563,12 @@ function renderMetric(item: MetricItem, data: RenderData, index: number): string
     ${label}
     <text x="16" y="${valueY}" font-size="${valueFontSize}" font-weight="700">${interpolate(item.value, data.values)}${escapeXml(item.suffix ?? '')}</text>
   </g>`
+}
+
+export function metricPlacement(height: number, valueFontSize: number): { valueY: number; labelY: number; showLabel: boolean } {
+  const valueY = Math.max(Math.min(46, height - valueFontSize), 0)
+  const labelY = Math.min(14, Math.max(valueY - 22, 0))
+  return { valueY, labelY, showLabel: labelY + 18 <= valueY }
 }
 
 function renderForecast(item: ForecastItem, data: RenderData, renderIndex: number): string {

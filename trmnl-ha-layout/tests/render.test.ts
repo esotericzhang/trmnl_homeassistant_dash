@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { loadLayoutConfig } from '../src/config.js'
 import { sampleRenderData } from '../src/homeAssistant.js'
-import { renderEditorHtml, renderSvg } from '../src/render.js'
+import { metricPlacement, renderEditorHtml, renderSvg } from '../src/render.js'
 import type { LayoutConfig, RenderData } from '../src/types.js'
 
 describe('renderer', () => {
+  it('computes adaptive metric placement', () => {
+    expect(metricPlacement(92, 30)).toEqual({ valueY: 46, labelY: 14, showLabel: true })
+    expect(metricPlacement(62, 20)).toEqual({ valueY: 42, labelY: 14, showLabel: true })
+    expect(metricPlacement(30, 30)).toEqual({ valueY: 0, labelY: 0, showLabel: false })
+  })
+
   it('positions bounded text from the top edge and escapes wrapped lines', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

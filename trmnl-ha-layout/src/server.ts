@@ -3,7 +3,6 @@ import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
   getAddonOptions,
-  isSafeValuePath,
   LayoutConfigError,
   loadLayoutConfig,
   loadSettings,
@@ -17,6 +16,7 @@ import {
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
+import { isAllowedFigmaAttributeKey, isSafeFigmaValuePath } from './figmaPolicy.js'
 import { HomeAssistantClient, sampleRenderData } from './homeAssistant.js'
 import { renderEditorHtml, renderHtml, renderPng, renderSvg } from './render.js'
 import { startScheduler } from './scheduler.js'
@@ -138,6 +138,7 @@ app.get('/api/figma/entities', async (req, res, next) => {
       : Object.values(sampleRenderData(layout).states)
     res.json({
       source: config.accessToken ? 'live' : 'sample',
+      frame: layout.frame,
       entities: sanitizeFigmaEntities(states)
     })
   } catch (error) { next(error) }
@@ -434,32 +435,16 @@ function sanitizeAttributeValues(attributes: Record<string, unknown>, maxValues 
     }
     if (value && typeof value === 'object') {
       Object.entries(value as Record<string, unknown>).slice(0, 40).forEach(([key, entry]) => {
-        if (!isAllowedAttributeKey(key)) return
+        if (!isAllowedFigmaAttributeKey(key)) return
         visit(entry, `${path}.${key}`, depth + 1)
       })
     }
   }
   Object.entries(attributes).forEach(([key, value]) => {
-    if (!isAllowedAttributeKey(key)) return
+    if (!isAllowedFigmaAttributeKey(key)) return
     visit(value, `attributes.${key}`, 1)
   })
   return values
-}
-
-const ALLOWED_ATTRIBUTE_KEYS = new Set([
-  'apparent_temperature', 'battery_level', 'cloud_coverage', 'condition', 'datetime',
-  'dew_point', 'distance', 'duration', 'energy', 'forecast', 'frequency', 'humidity', 'mode',
-  'ozone', 'percentage', 'power', 'precipitation', 'precipitation_probability', 'pressure',
-  'temperature', 'templow', 'uv_index', 'visibility', 'voltage', 'volume',
-  'wind_bearing', 'wind_gust_speed', 'wind_speed'
-])
-
-function isAllowedAttributeKey(key: string): boolean {
-  return ALLOWED_ATTRIBUTE_KEYS.has(key) && !isSecretLikeKey(key)
-}
-
-function isSecretLikeKey(key: string): boolean {
-  return /(?:^|_)(?:access|api|auth|code|cookie|credential|key|passcode|password|pin|secret|session|signature|token|webhook)(?:_|$)/i.test(key)
 }
 
 function isPrimitive(value: unknown): value is string | number | boolean | null {
@@ -537,7 +522,7 @@ function normalizeFigmaWidget(widget: unknown, index: number): FigmaWidget {
     throw new FigmaLayoutError(`widget ${index} cannot bind a secret-like entity`)
   }
   validateOptionalFigmaString(item.unit, 'unit', index, 64, true)
-  if (item.valuePath !== undefined && (typeof item.valuePath !== 'string' || !isSafeValuePath(item.valuePath))) {
+  if (item.valuePath !== undefined && (typeof item.valuePath !== 'string' || !isSafeFigmaValuePath(item.valuePath))) {
     throw new FigmaLayoutError(`widget ${index} has invalid valuePath`)
   }
   if (item.format !== undefined && (typeof item.format !== 'string' || !['', 'minutes', 'time', 'date'].includes(item.format))) {

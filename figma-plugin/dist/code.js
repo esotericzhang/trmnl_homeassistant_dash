@@ -9,6 +9,7 @@ const METRIC_CARD = {
 };
 const MAX_METRIC_LABEL_LENGTH = 256;
 const MAX_STATIC_TEXT_LENGTH = 4096;
+let backendFrameStyle = null;
 figma.showUI(__html__, { width: 420, height: 640, themeColors: true });
 figma.ui.onmessage = async (message) => {
     try {
@@ -25,7 +26,11 @@ figma.ui.onmessage = async (message) => {
             post({ type: 'status', message: message.token ? 'Saved dashboard token for protected bridge calls.' : 'Cleared dashboard token.' });
         }
         else if (message.type === 'create-frame') {
-            await createTrmnlFrame();
+            backendFrameStyle = message.frame;
+            await createTrmnlFrame(message.frame);
+        }
+        else if (message.type === 'set-frame-style') {
+            backendFrameStyle = message.frame;
         }
         else if (message.type === 'insert-text') {
             await insertText(message.entity);
@@ -55,20 +60,19 @@ async function dashboardToken() {
 function post(message) {
     figma.ui.postMessage(message);
 }
-async function createTrmnlFrame() {
+async function createTrmnlFrame(style) {
     const frame = figma.createFrame();
     frame.name = 'TRMNL 800x480';
     frame.resize(800, 480);
-    frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-    frame.strokes = [{ type: 'SOLID', color: { r: 0.05, g: 0.05, b: 0.05 } }];
-    frame.strokeWeight = 1;
+    frame.fills = [{ type: 'SOLID', color: parseHexColor(style.background) }];
+    frame.strokes = [];
     frame.clipsContent = true;
     frame.setPluginData('trmnl_frame', '800x480');
-    await loadInter('Regular');
+    await loadBackendFont('Regular');
     const label = figma.createText();
     label.name = 'TRMNL guide label';
     label.setPluginData('trmnl_non_exportable', 'true');
-    label.fontName = { family: 'Inter', style: 'Regular' };
+    label.fontName = { family: backendFontFamily(), style: 'Regular' };
     label.characters = 'TRMNL 800x480 e-ink frame';
     label.fontSize = 12;
     label.fills = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.4 } }];
@@ -82,13 +86,15 @@ async function createTrmnlFrame() {
 }
 async function insertText(entity) {
     const parent = selectedTrmnlFrame();
-    await loadInter('Regular');
+    if (!backendFrameStyle)
+        throw new Error('Load entities before inserting so the backend frame style is known.');
+    await loadBackendFont('Regular');
     const node = figma.createText();
     node.name = `ha:${entity.entity_id}`;
-    node.fontName = { family: 'Inter', style: 'Regular' };
+    node.fontName = { family: backendFontFamily(), style: 'Regular' };
     node.characters = entityLine(entity);
     node.fontSize = 24;
-    node.fills = blackFill();
+    node.fills = foregroundFill();
     node.x = 32;
     node.y = 32;
     node.resize(360, 32);
@@ -101,7 +107,9 @@ async function insertText(entity) {
 }
 async function insertCard(entity) {
     const parent = selectedTrmnlFrame();
-    await Promise.all([loadInter('Regular'), loadInter('Bold')]);
+    if (!backendFrameStyle)
+        throw new Error('Load entities before inserting so the backend frame style is known.');
+    await Promise.all([loadBackendFont('Regular'), loadBackendFont('Bold')]);
     const card = figma.createFrame();
     card.name = `ha-card:${entity.entity_id}`;
     card.resize(220, 92);
@@ -115,7 +123,7 @@ async function insertCard(entity) {
     setBinding(card, entity, 'metric_card');
     const label = figma.createText();
     label.name = `ha-label:${entity.entity_id}`;
-    label.fontName = { family: 'Inter', style: 'Regular' };
+    label.fontName = { family: backendFontFamily(), style: 'Regular' };
     label.characters = entity.name || entity.entity_id;
     label.fontSize = METRIC_CARD.label.fontSize;
     label.fills = [{ type: 'SOLID', color: METRIC_CARD.muted }];
@@ -126,10 +134,10 @@ async function insertCard(entity) {
     setBinding(label, entity, 'metric_label');
     const value = figma.createText();
     value.name = `ha-value:${entity.entity_id}`;
-    value.fontName = { family: 'Inter', style: 'Bold' };
+    value.fontName = { family: backendFontFamily(), style: 'Bold' };
     value.characters = entityValue(entity);
     value.fontSize = METRIC_CARD.value.fontSize;
-    value.fills = [{ type: 'SOLID', color: METRIC_CARD.foreground }];
+    value.fills = foregroundFill();
     value.x = METRIC_CARD.value.x;
     value.y = METRIC_CARD.value.y;
     value.resize(card.width - METRIC_CARD.value.x * 2, Math.max(card.height - METRIC_CARD.value.y, 1));
@@ -181,6 +189,12 @@ function exportSelectedFrame(requestId) {
     const widgets = [];
     if (hasUnrepresentableTransformInAncestorChain(frame))
         throw new Error('Export frame or one of its ancestors cannot be rotated, skewed, scaled, or flipped.');
+    if (!backendFrameStyle)
+        throw new Error('Load entities before exporting so the backend frame style can be validated.');
+    if (!hasRepresentableBlendModeToPage(frame))
+        throw new Error('Export frame or one of its ancestors has a blend mode that cannot be represented.');
+    if (!frameMatchesBackendStyle(frame, backendFrameStyle))
+        throw new Error('Export frame background does not match the preserved backend frame style.');
     const frameState = effectiveFrameState(frame);
     if (!frameState.visible)
         throw new Error('Export frame or one of its ancestors is hidden.');
@@ -238,6 +252,10 @@ function exportNode(node, frame, warnings) {
         return null;
     if (hasUnrepresentableTransformToFrame(node, frame)) {
         warnings.push(`${node.name}: skipped because rotated, skewed, scaled, or flipped content cannot be exported.`);
+        return null;
+    }
+    if (!hasRepresentableBlendModeToFrame(node, frame)) {
+        warnings.push(`${node.name}: skipped because its blend mode or an ancestor blend mode cannot be represented.`);
         return null;
     }
     const bounds = relativeBounds(node, frame);
@@ -369,6 +387,30 @@ function hasUnsupportedContainerStyle(node) {
 }
 function hasVisiblePaint(paints) {
     return paints !== figma.mixed && paints.some(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001);
+}
+function hasRepresentableBlendModeToFrame(node, frame) {
+    let current = node;
+    while (current && current !== frame) {
+        if ('blendMode' in current && !isRepresentableNodeBlendMode(current.blendMode))
+            return false;
+        current = current.parent;
+    }
+    return current === frame;
+}
+function hasRepresentableBlendModeToPage(node) {
+    let current = node;
+    while (current && current.type !== 'PAGE') {
+        if ('blendMode' in current && !isRepresentableNodeBlendMode(current.blendMode))
+            return false;
+        current = current.parent;
+    }
+    return true;
+}
+function isRepresentableNodeBlendMode(mode) {
+    return mode === 'NORMAL' || mode === 'PASS_THROUGH';
+}
+function isRepresentablePaintBlendMode(paint) {
+    return !('blendMode' in paint) || paint.blendMode === 'NORMAL';
 }
 function isClipped(node, clip) {
     const bounds = node.absoluteBoundingBox;
@@ -530,10 +572,11 @@ function hasPluginData(node, key) {
 function metricCardParts(node, warnings) {
     if (!('children' in node) || !node.absoluteBoundingBox)
         return null;
-    const visibleChildren = node.children.filter(child => child.visible && (!('opacity' in child) || child.opacity > 0.001) && child.absoluteBoundingBox && !isClipped(child, node.absoluteBoundingBox));
-    const labels = visibleChildren.filter(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
-    const values = visibleChildren.filter(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value');
-    if (visibleChildren.length !== 2 || labels.length !== 1 || values.length !== 1)
+    const relevantChildren = node.children.filter(child => readBinding(child)?.binding_type === 'metric_label' || readBinding(child)?.binding_type === 'metric_value');
+    const visibleOtherChildren = node.children.filter(child => !relevantChildren.includes(child) && child.visible && (!('opacity' in child) || child.opacity > 0.001));
+    const labels = relevantChildren.filter(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_label');
+    const values = relevantChildren.filter(child => child.type === 'TEXT' && readBinding(child)?.binding_type === 'metric_value');
+    if (visibleOtherChildren.length > 0 || relevantChildren.length !== 2 || labels.length !== 1 || values.length !== 1)
         return null;
     const [label] = labels;
     const [value] = values;
@@ -545,7 +588,9 @@ function metricCardParts(node, warnings) {
         if (!hasRepresentableTypography(part, warnings))
             return null;
     }
-    if (!isVisibleMetricPart(label, node.absoluteBoundingBox) || !isVisibleMetricPart(value, node.absoluteBoundingBox))
+    const valueFontSize = value.fontSize === figma.mixed ? METRIC_CARD.value.fontSize : value.fontSize;
+    const placement = metricPlacement(node.height, valueFontSize);
+    if ((placement.showLabel && !isVisibleMetricPart(label, node.absoluteBoundingBox)) || !isVisibleMetricPart(value, node.absoluteBoundingBox))
         return null;
     return { label, value };
 }
@@ -566,12 +611,16 @@ function hasCanonicalMetricCardStyle(node) {
         && hasCanonicalSolidPaint(node.strokes, METRIC_CARD.foreground);
 }
 function hasCanonicalMetricPart(node, card, kind) {
-    const expected = METRIC_CARD[kind];
-    const expectedHeight = kind === 'label' ? METRIC_CARD.label.height : Math.max(card.height - METRIC_CARD.value.y, 1);
-    const expectedColor = kind === 'label' ? METRIC_CARD.muted : METRIC_CARD.foreground;
+    const fontSize = kind === 'value' && node.fontSize !== figma.mixed ? node.fontSize : METRIC_CARD.value.fontSize;
+    const placement = metricPlacement(card.height, fontSize);
+    const expected = kind === 'label'
+        ? { ...METRIC_CARD.label, y: placement.labelY }
+        : { ...METRIC_CARD.value, y: placement.valueY };
+    const expectedHeight = kind === 'label' ? METRIC_CARD.label.height : Math.max(card.height - placement.valueY, 1);
+    const expectedColor = kind === 'label' ? METRIC_CARD.muted : backendForeground();
     const expectedStyle = kind === 'label' ? 'regular' : 'bold';
     return node.parent === card
-        && node.visible
+        && node.visible === (kind === 'value' || placement.showLabel)
         && node.opacity === 1
         && node.effects.every(effect => effect.visible === false)
         && close(node.x, expected.x)
@@ -579,7 +628,7 @@ function hasCanonicalMetricPart(node, card, kind) {
         && close(node.width, card.width - expected.x * 2)
         && close(node.height, expectedHeight)
         && node.fontName !== figma.mixed
-        && node.fontName.family === 'Inter'
+        && node.fontName.family === backendFontFamily()
         && node.fontName.style.toLowerCase() === expectedStyle
         && node.fontSize !== figma.mixed
         && (kind === 'value' || close(node.fontSize, expected.fontSize))
@@ -595,6 +644,7 @@ function hasCanonicalSolidPaint(paints, color) {
     const visible = paints.filter(paint => paint.visible !== false && (paint.opacity ?? 1) > 0.001);
     return visible.length === 1
         && visible[0].type === 'SOLID'
+        && isRepresentablePaintBlendMode(visible[0])
         && (visible[0].opacity ?? 1) === 1
         && close(visible[0].color.r, color.r)
         && close(visible[0].color.g, color.g)
@@ -616,7 +666,7 @@ function hasRepresentableTypography(node, warnings) {
     if (typeof node.fontName !== 'object')
         return false;
     const style = node.fontName.style.toLowerCase().replace(/[\s-]+/g, '');
-    if (node.fontName.family !== 'Inter' || !/^(regular|bold|thin|hairline|extralight|ultralight|light|medium|semibold|demibold|extrabold|ultrabold|black|heavy)$/.test(style)) {
+    if (node.fontName.family !== backendFontFamily() || !/^(regular|bold|thin|hairline|extralight|ultralight|light|medium|semibold|demibold|extrabold|ultrabold|black|heavy)$/.test(style)) {
         warnings.push(`${node.name}: skipped because font family or style cannot be represented.`);
         return false;
     }
@@ -654,12 +704,17 @@ function hasRepresentableTextPaint(node, warnings) {
         return false;
     }
     const paint = visiblePaints[0];
+    if (!isRepresentablePaintBlendMode(paint)) {
+        warnings.push(`${node.name}: skipped because text paint blend mode cannot be represented.`);
+        return false;
+    }
     if ((paint.opacity ?? 1) < 0.999) {
         warnings.push(`${node.name}: skipped because text fill opacity cannot be represented.`);
         return false;
     }
+    const expected = backendForeground();
     const { r, g, b } = paint.color;
-    if (Math.max(r, g, b) > 0.1 || Math.max(r, g, b) - Math.min(r, g, b) > 0.001) {
+    if (!close(r, expected.r) || !close(g, expected.g) || !close(b, expected.b)) {
         warnings.push(`${node.name}: skipped because its text color does not match the supported foreground.`);
         return false;
     }
@@ -696,12 +751,13 @@ function textWeight(node) {
         return 700;
     return 400;
 }
-async function loadInter(style) {
+async function loadBackendFont(style) {
+    const family = backendFontFamily();
     try {
-        await figma.loadFontAsync({ family: 'Inter', style });
+        await figma.loadFontAsync({ family, style });
     }
     catch {
-        throw new Error(`Could not load Inter ${style}. Install or enable Inter in Figma, then retry.`);
+        throw new Error(`Could not load ${family} ${style}. Install or enable the backend frame font in Figma, then retry.`);
     }
 }
 async function loadTextNodeFonts(node) {
@@ -736,8 +792,9 @@ function formatEntityValue(value, format) {
         }
     }
     if (format === 'time' || format === 'date') {
-        const date = new Date(String(value));
-        if (!Number.isNaN(date.getTime())) {
+        const input = String(value);
+        const date = format === 'date' ? parseCalendarDate(input) ?? parseTimestamp(input) : parseTimestamp(input);
+        if (date) {
             return format === 'time'
                 ? new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date)
                 : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
@@ -745,6 +802,73 @@ function formatEntityValue(value, format) {
     }
     return String(value ?? '');
 }
-function blackFill() {
-    return [{ type: 'SOLID', color: { r: 0.05, g: 0.05, b: 0.05 } }];
+function parseCalendarDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match)
+        return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+function parseTimestamp(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+    if (!match)
+        return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] ?? 0);
+    const offset = match[7];
+    if (!validDateParts(year, month, day) || hour > 23 || minute > 59 || second > 59)
+        return null;
+    if (offset !== 'Z' && (Number(offset.slice(1, 3)) > 23 || Number(offset.slice(4, 6)) > 59))
+        return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+function validDateParts(year, month, day) {
+    if (month < 1 || month > 12 || day < 1)
+        return false;
+    return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+function metricPlacement(height, valueFontSize) {
+    const valueY = Math.max(Math.min(46, height - valueFontSize), 0);
+    const labelY = Math.min(14, Math.max(valueY - 22, 0));
+    return { valueY, labelY, showLabel: labelY + 18 <= valueY };
+}
+function frameMatchesBackendStyle(frame, style) {
+    const background = parseHexColor(style.background);
+    return hasCanonicalSolidPaint(frame.fills, background)
+        && !hasVisiblePaint(frame.strokes)
+        && frame.effects.every(effect => effect.visible === false);
+}
+function backendFontFamily() {
+    if (!backendFrameStyle)
+        throw new Error('Load entities before editing or exporting so the backend frame font is known.');
+    const family = backendFrameStyle.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+    if (!family)
+        throw new Error('Backend frame fontFamily does not contain a usable font family.');
+    return family;
+}
+function backendForeground() {
+    if (!backendFrameStyle)
+        throw new Error('Load entities before editing or exporting so the backend foreground is known.');
+    return parseHexColor(backendFrameStyle.foreground);
+}
+function parseHexColor(value) {
+    const match = /^#([0-9a-f]{6})$/i.exec(value);
+    if (!match)
+        throw new Error(`Backend frame color ${value} is not a supported six-digit hex color.`);
+    return {
+        r: parseInt(match[1].slice(0, 2), 16) / 255,
+        g: parseInt(match[1].slice(2, 4), 16) / 255,
+        b: parseInt(match[1].slice(4, 6), 16) / 255
+    };
+}
+function foregroundFill() {
+    return [{ type: 'SOLID', color: backendForeground() }];
 }

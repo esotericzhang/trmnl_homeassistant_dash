@@ -34,6 +34,7 @@
     const $ = id => document.getElementById(id);
     let entities = [];
     let entitySource = 'unknown';
+    let frameStyle = null;
     let exportedLayout = null;
     let nextExportRequestId = 1;
     const exportActions = new Map();
@@ -75,8 +76,10 @@
       const json = await fetchJson(backend() + '/api/figma/entities');
       entities = Array.isArray(json.entities) ? json.entities : [];
       entitySource = json.source || 'unknown';
+      frameStyle = json.frame || null;
+      if (frameStyle) send({ type:'set-frame-style', frame: frameStyle });
       renderEntities();
-      status('Loaded '+entities.length+' sanitized entities from '+entitySource+' data. HA tokens are never sent to this plugin.');
+      status('Loaded '+entities.length+' sanitized entities and backend frame style from '+entitySource+' data. HA tokens are never sent to this plugin.');
     }
     async function saveDashboard() {
       exportedLayout = null;
@@ -104,7 +107,9 @@
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     $('save-url').onclick = () => { send({ type:'save-backend-url', url: backend() }); status('Backend URL set to '+backend()+'. Also update manifest networkAccess for LAN hosts before importing.'); };
     $('save-token').onclick = () => { send({ type:'save-dashboard-token', token: dashboardToken() }); status(dashboardToken() ? 'Dashboard token saved for protected bridge calls.' : 'Dashboard token cleared. No Authorization header will be sent.'); };
-    $('create-frame').onclick = () => send({ type:'create-frame' });
+    $('create-frame').onclick = () => {
+      loadEntities().then(() => send({ type:'create-frame', frame: frameStyle })).catch(e => status('Create frame failed: '+e.message));
+    };
     $('load-entities').onclick = () => loadEntities().catch(e => status('Load failed: '+e.message));
     $('search').oninput = renderEntities;
     $('refresh-selected').onclick = () => loadEntities()

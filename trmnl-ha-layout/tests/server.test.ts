@@ -391,8 +391,9 @@ describe('figma bridge routes', () => {
     const res = await fetch(`${baseUrl}/api/figma/entities`, { headers: { Authorization: 'Bearer test-settings-token' } })
     expect(res.ok).toBe(true)
     expect(res.headers.get('access-control-allow-origin')).toBe('*')
-    const body = await res.json() as { source: string; entities: Array<Record<string, unknown>> }
+    const body = await res.json() as { source: string; frame: Record<string, unknown>; entities: Array<Record<string, unknown>> }
     expect(body.source).toBe('live')
+    expect(body.frame).toMatchObject({ width: 800, height: 480, background: '#ffffff', foreground: '#111111' })
     expect(body.entities).toEqual([
       {
         entity_id: 'sensor.build_identifier',
@@ -527,6 +528,7 @@ describe('figma bridge routes', () => {
     expect(res.ok).toBe(true)
     const body = await res.json()
     expect(body.frame.width).toBe(800)
+    expect(body.frame).toMatchObject({ background: '#ffffff', foreground: '#111111', fontFamily: 'Arial, Helvetica, sans-serif' })
     expect(body.data.entities.kitchenTemperature).toBe('sensor.kitchen_temperature')
     expect(body.items[0]).toMatchObject({ type: 'text', text: 'Kitchen', literal: true, x: 20, y: 18, width: 220, height: 32 })
     expect(body.items[1]).toMatchObject({ type: 'metric', label: 'Kitchen Temp', value: '{{ kitchenTemperature }}', suffix: '°F' })
@@ -629,6 +631,21 @@ describe('figma bridge routes', () => {
     expect(body.items[2]).toMatchObject({ text: '{{ weather }}', prefix: 'First temp: ', suffix: '°F' })
     expect(body.items[3]).toMatchObject({ text: '{{ blankLabel }}', prefix: '' })
     expect(body.data.selectors).toEqual({ weather: 'attributes.forecast.0.temperature' })
+  })
+
+  it.each([
+    ['PUT', '/api/figma/layout'],
+    ['POST', '/api/figma/preview-layout']
+  ])('%s %s rejects selectors outside the disclosed Figma policy', async (method, path) => {
+    for (const valuePath of ['attributes.password', 'attributes.forecast.0.access_code', 'attributes.current', 'attributes.0.temperature']) {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ width: 800, height: 480, widgets: [{ type: 'text', entity: 'sensor.weather', valuePath, x: 20, y: 20, width: 220, height: 32 }] })
+      })
+      expect(res.status).toBe(400)
+      expect((await res.json()).message).toContain('invalid valuePath')
+    }
   })
 
   it('PUT /api/figma/layout rejects widgets outside the frame', async () => {
