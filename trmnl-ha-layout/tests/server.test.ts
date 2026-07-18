@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Server } from 'node:http'
 import type { Settings } from '../src/config.js'
 import { loadSettings, saveSettings } from '../src/config.js'
-import { app } from '../src/server.js'
+import { app, terminusOptionsForSchedule } from '../src/server.js'
+import type { Schedule } from '../src/schedules.js'
 
 describe('server routes', () => {
   let server: Server
@@ -27,6 +28,18 @@ describe('server routes', () => {
     const res = await fetch(`${baseUrl}/`, { redirect: 'manual' })
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('/editor')
+  })
+
+  it('resolves schedule screen IDs from either compatibility field', () => {
+    const schedule = {
+      id: 'compatibility-test',
+      name: 'Compatibility test',
+      destination: { screenId: 'screen-id', deviceId: 'device-id' }
+    } as Schedule
+
+    expect(terminusOptionsForSchedule(schedule).screenId).toBe('screen-id')
+    schedule.destination.screenId = null
+    expect(terminusOptionsForSchedule(schedule).screenId).toBe('device-id')
   })
 
   it('serves PNG output and editor UI with global connection settings', async () => {

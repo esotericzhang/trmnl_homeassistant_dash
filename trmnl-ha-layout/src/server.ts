@@ -100,6 +100,7 @@ function terminusOptionsForSchedule(schedule: Schedule): TerminusPushOptions {
   const global = terminusOptionsFromEnv()
   const legacyOverrides = legacyScheduleTerminusOverrides()
   const destination = schedule.destination
+  const destinationScreenId = destination.screenId ?? destination.deviceId
   const legacyDefault = schedule.id === defaultScheduleId()
   return {
     ...global,
@@ -109,7 +110,7 @@ function terminusOptionsForSchedule(schedule: Schedule): TerminusPushOptions {
     screenName: legacyDefault ? legacyOverrides.screenName ?? destination.screenName ?? global.screenName : destination.screenName ?? `ha-layout-${schedule.id}`,
     screenLabel: legacyDefault ? legacyOverrides.screenLabel ?? destination.screenLabel ?? global.screenLabel : destination.screenLabel ?? schedule.name,
     playlistId: legacyDefault ? legacyOverrides.playlistId ?? destination.playlistId ?? global.playlistId : destination.playlistId ?? undefined,
-    screenId: legacyDefault ? legacyOverrides.screenId ?? destination.deviceId ?? global.screenId : destination.deviceId ?? undefined,
+    screenId: legacyDefault ? legacyOverrides.screenId ?? destinationScreenId ?? global.screenId : destinationScreenId ?? undefined,
     screenUri: legacyDefault ? '/screen.png' : `/schedules/${encodeURIComponent(schedule.id)}/screen.png`
   }
 }
@@ -457,4 +458,4 @@ if (process.env.NODE_ENV !== 'test') {
   app.listen(runtime.port, () => console.log(`TRMNL HA Layout listening on ${runtime.port}`))
 }
 
-export { app, renderCurrent, renderSchedule, refreshAndPush, refreshAndPushSchedule }
+export { app, renderCurrent, renderSchedule, refreshAndPush, refreshAndPushSchedule, terminusOptionsForSchedule }
