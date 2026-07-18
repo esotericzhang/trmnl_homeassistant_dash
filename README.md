@@ -125,7 +125,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 
 - `GET /health`: service status.
 - `GET /`: redirects to `/editor`.
-- `GET /screen.png`: renders the persisted default schedule as an 800x480 PNG. `?schedule_id=<id>` selects another schedule.
+- `GET /screen.png`: renders the persisted default schedule as an 800x480 PNG. Use `/schedules/:id/screen.png` for another schedule.
 - `GET /screen.svg`: renders the current dashboard as SVG.
 - `GET /render`: wraps the SVG in HTML.
 - `GET /preview`: minimal preview and refresh UI.
