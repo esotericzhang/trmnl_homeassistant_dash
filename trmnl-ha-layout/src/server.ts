@@ -11,6 +11,7 @@ import {
   normalizeSettings,
   saveSettings,
   stringOption,
+  validateLayoutConfig,
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
@@ -83,12 +84,12 @@ function defaultScheduleId(): string {
   return loadSchedulesIndex().defaultScheduleId
 }
 
-async function renderSchedule(scheduleId: string, useSample = false): Promise<{ layout: ReturnType<typeof loadLayoutConfig>, svg: string, png: Buffer }> {
+async function renderSchedule(scheduleId: string, useSample = false, signal?: AbortSignal): Promise<{ layout: ReturnType<typeof loadLayoutConfig>, svg: string, png: Buffer }> {
   const layout = loadScheduleLayout(scheduleId)
   const config = await currentRuntime()
   const data = useSample || !config.accessToken
     ? sampleRenderData(layout)
-    : await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).collect(layout)
+    : await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).collect(layout, signal)
   lastSvg = renderSvg(layout, data)
   lastPng = await renderPng(layout, lastSvg)
   lastRefresh = new Date().toISOString()
@@ -102,7 +103,7 @@ function terminusOptionsForSchedule(schedule: Schedule): TerminusPushOptions {
   const legacyDefault = schedule.id === defaultScheduleId()
   return {
     ...global,
-    mode: legacyDefault ? legacyOverrides.mode ?? destination.mode ?? global.mode : destination.mode ?? global.mode,
+    mode: legacyDefault ? legacyOverrides.mode ?? destination.mode ?? global.mode : destination.mode ?? 'byos-uri',
     webhookUrl: legacyDefault ? legacyOverrides.webhookUrl ?? destination.webhookUrl ?? global.webhookUrl : destination.webhookUrl ?? undefined,
     modelId: legacyDefault ? legacyOverrides.modelId ?? destination.modelId ?? global.modelId : destination.modelId ?? undefined,
     screenName: legacyDefault ? legacyOverrides.screenName ?? destination.screenName ?? global.screenName : destination.screenName ?? `ha-layout-${schedule.id}`,
@@ -113,21 +114,21 @@ function terminusOptionsForSchedule(schedule: Schedule): TerminusPushOptions {
   }
 }
 
-async function refreshAndPushSchedule(scheduleId: string): Promise<string> {
+async function refreshAndPushSchedule(scheduleId: string, signal?: AbortSignal): Promise<string> {
   const existing = pushJobs.get(scheduleId)
   if (existing) return existing
-  const job = runRefreshAndPushSchedule(scheduleId)
+  const job = runRefreshAndPushSchedule(scheduleId, signal)
   pushJobs.set(scheduleId, job)
   try { return await job } finally { pushJobs.delete(scheduleId) }
 }
 
-async function runRefreshAndPushSchedule(scheduleId: string): Promise<string> {
+async function runRefreshAndPushSchedule(scheduleId: string, signal?: AbortSignal): Promise<string> {
   const schedule = getSchedule(scheduleId)
   const attemptedAt = new Date().toISOString()
   updateSchedule(scheduleId, { status: { lastAttemptAt: attemptedAt, result: null, error: null } })
   try {
-    const rendered = await renderSchedule(scheduleId, false)
-    const result = await new TerminusClient().push(rendered.png, terminusOptionsForSchedule(schedule), rendered.svg)
+    const rendered = await renderSchedule(scheduleId, false, signal)
+    const result = await new TerminusClient().push(rendered.png, { ...terminusOptionsForSchedule(schedule), signal }, rendered.svg)
     lastPush = result
     const skipped = result.startsWith('skipped:')
     updateSchedule(scheduleId, { status: skipped
@@ -157,10 +158,6 @@ async function refreshAndPush(): Promise<string> {
 
 async function renderCurrent(useSample = false): Promise<{ layout: ReturnType<typeof loadLayoutConfig>, svg: string, png: Buffer }> {
   return renderSchedule(defaultScheduleId(), useSample)
-}
-
-function scheduleIdFromQuery(value: unknown): string {
-  return typeof value === 'string' && value.length > 0 ? value : defaultScheduleId()
 }
 
 function scheduleNotFound(error: unknown): boolean {
@@ -230,6 +227,25 @@ app.get('/api/schedules/:id/config', (req, res, next) => {
 app.put('/api/schedules/:id/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleScheduleError(error, res, next) }
+})
+
+app.put('/api/schedules/:id', (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
+  try {
+    const changes = { ...(req.body?.schedule as UpdateScheduleInput) }
+    delete changes.status
+    const current = getSchedule(req.params.id)
+    if (changes.destination?.webhookUrl === '••••') changes.destination.webhookUrl = current.destination.webhookUrl
+    validateLayoutConfig(req.body?.config)
+    const updated = updateSchedule(req.params.id, changes)
+    try {
+      const layout = saveScheduleLayout(req.params.id, req.body.config)
+      res.json({ schedule: scheduleForApi(updated), config: layout })
+    } catch (error) {
+      updateSchedule(req.params.id, current)
+      throw error
+    }
+  } catch (error) { handleScheduleError(error, res, next) }
 })
 
 app.post('/api/schedules/:id/push', async (req, res, next) => {
@@ -374,21 +390,21 @@ app.delete('/api/terminus/tokens', (req, res, next) => {
 
 app.get('/screen.svg', async (req, res, next) => {
   try {
-    const { svg } = await renderSchedule(scheduleIdFromQuery(req.query.schedule_id), req.query.sample === '1')
+    const { svg } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('image/svg+xml').send(svg)
   } catch (error) { next(error) }
 })
 
 app.get('/screen.png', async (req, res, next) => {
   try {
-    const { png } = await renderSchedule(scheduleIdFromQuery(req.query.schedule_id), req.query.sample === '1')
+    const { png } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('image/png').send(png)
   } catch (error) { next(error) }
 })
 
 app.get('/render', async (req, res, next) => {
   try {
-    const { layout, svg } = await renderSchedule(scheduleIdFromQuery(req.query.schedule_id), req.query.sample === '1')
+    const { layout, svg } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('html').send(renderHtml(layout, svg))
   } catch (error) { next(error) }
 })
@@ -432,7 +448,7 @@ void validateSettings
 
 const coordinator = createScheduleCoordinator({
   loadSchedules: listSchedules,
-  execute: (schedule) => refreshAndPushSchedule(schedule.id),
+  execute: (schedule, signal) => refreshAndPushSchedule(schedule.id, signal),
   onStatus: (schedule, status) => { updateSchedule(schedule.id, { status }) }
 })
 

@@ -36,6 +36,7 @@ export interface ScheduleStatus {
   lastAttemptAt: string | null
   lastSuccessAt: string | null
   nextRunAt: string | null
+  nextRunSignature?: string | null
   result: string | null
   error: string | null
 }
@@ -99,6 +100,7 @@ const EMPTY_STATUS: ScheduleStatus = {
   lastAttemptAt: null,
   lastSuccessAt: null,
   nextRunAt: null,
+  nextRunSignature: null,
   result: null,
   error: null
 }
@@ -214,6 +216,10 @@ export function updateSchedule(
     id,
     destination: changes.destination ? { ...current.destination, ...changes.destination } : current.destination,
     status: changes.status ? { ...current.status, ...changes.status } : current.status
+  }
+  if ((changes.enabled !== undefined && changes.enabled !== current.enabled)
+    || (changes.timing !== undefined && JSON.stringify(changes.timing) !== JSON.stringify(current.timing))) {
+    updated.status = { ...updated.status, nextRunAt: null, nextRunSignature: null }
   }
   validateSchedule(updated)
   index.schedules[position] = updated
@@ -443,6 +449,9 @@ function validateStatus(status: ScheduleStatus): void {
     if (status[key] !== null && typeof status[key] !== 'string') {
       throw new Error(`Schedule status ${key} must be text or null`)
     }
+  }
+  if (status.nextRunSignature !== undefined && status.nextRunSignature !== null && typeof status.nextRunSignature !== 'string') {
+    throw new Error('Schedule status nextRunSignature must be text or null')
   }
 }
 

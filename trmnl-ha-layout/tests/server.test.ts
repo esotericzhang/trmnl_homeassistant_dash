@@ -92,6 +92,10 @@ describe('server routes', () => {
 
     const svg = await fetch(`${baseUrl}/schedules/${created.id}/screen.svg?sample=1`)
     expect(svg.headers.get('content-type')).toContain('image/svg+xml')
+
+    const legacySvg = await fetch(`${baseUrl}/screen.svg?sample=1&schedule_id=${created.id}`).then((response) => response.text())
+    const defaultSvg = await fetch(`${baseUrl}/screen.svg?sample=1`).then((response) => response.text())
+    expect(legacySvg).toBe(defaultSvg)
   })
 
   it('returns 404 for unknown schedule routes', async () => {

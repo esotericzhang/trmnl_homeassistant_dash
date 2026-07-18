@@ -8,7 +8,7 @@ export type ScheduleStatusUpdate = Partial<ScheduleStatus>
 
 export interface ScheduleCoordinatorOptions {
   loadSchedules: () => Schedule[] | Promise<Schedule[]>
-  execute: (schedule: Schedule) => Promise<unknown>
+  execute: (schedule: Schedule, signal: AbortSignal) => Promise<unknown>
   onStatus?: (schedule: Schedule, update: ScheduleStatusUpdate) => void | Promise<void>
   now?: () => Date
   pollIntervalMs?: number
@@ -56,38 +56,49 @@ export function createScheduleCoordinator(options: ScheduleCoordinatorOptions): 
       for (const id of states.keys()) if (!activeIds.has(id)) states.delete(id)
 
       for (const schedule of schedules) {
-        const signature = JSON.stringify([schedule.enabled, schedule.timing])
-        let state = states.get(schedule.id)
+        const latest = (await options.loadSchedules()).find((candidate) => candidate.id === schedule.id)
+        if (!latest) {
+          states.delete(schedule.id)
+          continue
+        }
+        const signature = scheduleSignature(latest)
+        let state = states.get(latest.id)
         if (!state || state.signature !== signature) {
-          const persistedNextRun = state || !isAutomatic(schedule) ? null : parseDate(schedule.status.nextRunAt)
-          const calculated = calculateNextRun(schedule, now())
+          const persistedNextRun = !state && latest.status.nextRunSignature === signature
+            ? parseDate(latest.status.nextRunAt)
+            : null
+          const calculated = calculateNextRun(latest, now())
           state = { signature, nextRunAt: persistedNextRun ?? calculated.nextRunAt }
-          states.set(schedule.id, state)
-          await report(schedule, { nextRunAt: state.nextRunAt?.toISOString() ?? null, error: calculated.error })
+          states.set(latest.id, state)
+          await report(latest, {
+            nextRunAt: state.nextRunAt?.toISOString() ?? null,
+            nextRunSignature: state.nextRunAt ? signature : null,
+            ...(calculated.error ? { error: calculated.error } : {})
+          })
         }
 
         const currentTime = now()
         if (!state.nextRunAt || state.nextRunAt.getTime() > currentTime.getTime()) continue
 
         const attemptedAt = currentTime.toISOString()
-        await report(schedule, { lastAttemptAt: attemptedAt, nextRunAt: null, result: null, error: null })
+        await report(latest, { lastAttemptAt: attemptedAt, nextRunAt: null, nextRunSignature: null, result: null, error: null })
         try {
-          const result = await withTimeout(options.execute(schedule), executionTimeoutMs, schedule.id)
+          await executeWithTimeout(options.execute, latest, executionTimeoutMs)
           const completedAt = now()
-          const calculated = calculateNextRun(schedule, completedAt)
+          const calculated = calculateNextRun(latest, completedAt)
           state.nextRunAt = calculated.nextRunAt
-          await report(schedule, {
-            lastSuccessAt: completedAt.toISOString(),
+          await report(latest, {
             nextRunAt: state.nextRunAt?.toISOString() ?? null,
-            result: formatResult(result),
-            error: calculated.error
+            nextRunSignature: state.nextRunAt ? signature : null,
+            ...(calculated.error ? { error: calculated.error } : {})
           })
         } catch (error) {
-          state.nextRunAt = calculateNextRun(schedule, now()).nextRunAt
-          await report(schedule, {
+          state.nextRunAt = calculateNextRun(latest, now()).nextRunAt
+          await report(latest, {
             nextRunAt: state.nextRunAt?.toISOString() ?? null,
+            nextRunSignature: state.nextRunAt ? signature : null,
             result: null,
-            error: error instanceof Error ? error.message : String(error)
+            error: sanitizeError(error)
           })
         }
       }
@@ -126,14 +137,21 @@ export function createScheduleCoordinator(options: ScheduleCoordinatorOptions): 
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, scheduleId: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`Schedule execution timed out after ${timeoutMs}ms: ${scheduleId}`)), timeoutMs)
-    promise.then(
-      (value) => { clearTimeout(timeout); resolve(value) },
-      (error) => { clearTimeout(timeout); reject(error) }
-    )
-  })
+async function executeWithTimeout(
+  execute: ScheduleCoordinatorOptions['execute'],
+  schedule: Schedule,
+  timeoutMs: number
+): Promise<void> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(new Error(`Schedule execution timed out after ${timeoutMs}ms: ${schedule.id}`)), timeoutMs)
+  try {
+    await execute(schedule, controller.signal)
+  } catch (error) {
+    if (controller.signal.aborted) throw controller.signal.reason
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export function startScheduler(seconds: number, job: () => Promise<unknown>): NodeJS.Timeout | undefined {
@@ -180,8 +198,8 @@ function calculateNextRun(schedule: Schedule, from: Date): { nextRunAt: Date | n
   }
 }
 
-function isAutomatic(schedule: Schedule): boolean {
-  return schedule.enabled && schedule.timing.kind !== 'manual'
+function scheduleSignature(schedule: Schedule): string {
+  return JSON.stringify([schedule.enabled, schedule.timing])
 }
 
 function nextDailyRun(from: Date, time: string, timezone: string | null): Date {
@@ -253,12 +271,10 @@ function parseDate(value: string | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function formatResult(result: unknown): string | null {
-  if (result === undefined || result === null) return null
-  if (typeof result === 'string') return result
-  try {
-    return JSON.stringify(result)
-  } catch {
-    return String(result)
-  }
+function sanitizeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return message
+    .replace(/https?:\/\/[^\s)]+/g, '[redacted URL]')
+    .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
+    .slice(0, 500)
 }

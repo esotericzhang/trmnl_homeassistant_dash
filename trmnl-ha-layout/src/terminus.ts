@@ -16,6 +16,7 @@ export interface TerminusPushOptions {
   playlistId?: string
   screenId?: string
   screenUri?: string
+  signal?: AbortSignal
 }
 
 export class TerminusClient {
@@ -53,7 +54,8 @@ export class TerminusClient {
     const response = await this.fetcher(options.webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'image/png' },
-      body: new Uint8Array(png)
+      body: new Uint8Array(png),
+      signal: options.signal
     })
     if (!response.ok) throw new Error(`Webhook push failed: ${response.status}`)
     return 'pushed raw webhook'
@@ -70,7 +72,8 @@ export class TerminusClient {
     const response = await this.fetcher(new URL('/api/screens', options.apiUrl).toString(), {
       method: 'POST',
       headers: { Authorization: this.authorizationHeader(options.accessToken ?? ''), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ screen })
+      body: JSON.stringify({ screen }),
+      signal: options.signal
     })
     if (response.status === 422) {
       await this.patchDuplicateScreen(options, screen)
@@ -82,7 +85,8 @@ export class TerminusClient {
 
   async listPlaylists(options: TerminusPushOptions): Promise<unknown> {
     const response = await this.fetcher(new URL('/api/playlists', options.apiUrl).toString(), {
-      headers: { Authorization: this.authorizationHeader(options.accessToken ?? '') }
+      headers: { Authorization: this.authorizationHeader(options.accessToken ?? '') },
+      signal: options.signal
     })
     if (!response.ok) throw new Error(`Terminus playlist list failed: ${response.status}`)
     return response.json() as Promise<unknown>
@@ -92,7 +96,8 @@ export class TerminusClient {
     const response = await this.fetcher(new URL(`/api/playlists/${playlistId}`, options.apiUrl).toString(), {
       method: 'PATCH',
       headers: { Authorization: this.authorizationHeader(options.accessToken ?? ''), 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: options.signal
     })
     if (!response.ok) throw new Error(`Terminus playlist update failed: ${response.status}`)
     return response.json() as Promise<unknown>
@@ -119,7 +124,8 @@ export class TerminusClient {
     const response = await this.fetcher(new URL('/api/jwt', options.apiUrl).toString(), {
       method: 'POST',
       headers: { Authorization: this.authorizationHeader(options.accessToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: options.refreshToken })
+      body: JSON.stringify({ refresh_token: options.refreshToken }),
+      signal: options.signal
     })
     if (!response.ok) throw new Error(`Terminus refresh failed: ${response.status} ${await response.text()}`)
     const body = await response.json() as Record<string, unknown>
@@ -142,7 +148,8 @@ export class TerminusClient {
     const response = await this.fetcher(new URL('/login', options.apiUrl).toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login: options.login, password: options.password })
+      body: JSON.stringify({ login: options.login, password: options.password }),
+      signal: options.signal
     })
     if (!response.ok) throw new Error(`Terminus login failed: ${response.status}`)
     const body = await response.json() as Record<string, unknown>
@@ -158,7 +165,8 @@ export class TerminusClient {
     const response = await this.fetcher(new URL('/api/jwt', options.apiUrl).toString(), {
       method: 'POST',
       headers: { Authorization: this.authorizationHeader(options.accessToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: options.refreshToken })
+      body: JSON.stringify({ refresh_token: options.refreshToken }),
+      signal: options.signal
     })
     if (!response.ok) return undefined
     const body = await response.json() as Record<string, unknown>
@@ -168,7 +176,8 @@ export class TerminusClient {
   private async patchDuplicateScreen(options: TerminusPushOptions, screen: Record<string, unknown>): Promise<void> {
     if (!options.apiUrl || !options.accessToken) throw new Error('Terminus duplicate screen update requires apiUrl and accessToken')
     const listResponse = await this.fetcher(new URL('/api/screens', options.apiUrl).toString(), {
-      headers: { Authorization: this.authorizationHeader(options.accessToken) }
+      headers: { Authorization: this.authorizationHeader(options.accessToken) },
+      signal: options.signal
     })
     if (!listResponse.ok) throw new Error(`Terminus duplicate screen lookup failed: ${listResponse.status} ${await listResponse.text()}`)
     const body = await listResponse.json() as unknown
@@ -189,7 +198,8 @@ export class TerminusClient {
     const patchResponse = await this.fetcher(new URL(`/api/screens/${duplicate.id}`, options.apiUrl).toString(), {
       method: 'PATCH',
       headers: { Authorization: this.authorizationHeader(options.accessToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ screen })
+      body: JSON.stringify({ screen }),
+      signal: options.signal
     })
     if (!patchResponse.ok) throw new Error(`Terminus duplicate screen update failed: ${patchResponse.status} ${await patchResponse.text()}`)
   }

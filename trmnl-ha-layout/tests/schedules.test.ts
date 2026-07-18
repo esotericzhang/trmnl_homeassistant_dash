@@ -94,6 +94,7 @@ describe('schedule persistence', () => {
           lastAttemptAt: null,
           lastSuccessAt: null,
           nextRunAt: null,
+          nextRunSignature: null,
           result: null,
           error: null
         }
@@ -205,6 +206,7 @@ describe('schedule persistence', () => {
       lastAttemptAt: null,
       lastSuccessAt: null,
       nextRunAt: null,
+      nextRunSignature: null,
       result: null,
       error: null
     })

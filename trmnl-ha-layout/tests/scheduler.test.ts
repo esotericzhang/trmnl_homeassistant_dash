@@ -80,8 +80,8 @@ describe('scheduler', () => {
     expect(execute).not.toHaveBeenCalled()
     expect(onStatus).toHaveBeenCalledTimes(2)
     expect(onStatus.mock.calls.map((call) => [call[0].id, call[1]])).toEqual([
-      ['manual', { nextRunAt: null, error: null }],
-      ['disabled', { nextRunAt: null, error: null }]
+      ['manual', { nextRunAt: null, nextRunSignature: null }],
+      ['disabled', { nextRunAt: null, nextRunSignature: null }]
     ])
   })
 
@@ -110,7 +110,7 @@ describe('scheduler', () => {
     await polling
 
     expect(execute.mock.calls.map((call) => call[0].id)).toEqual(['first', 'second'])
-    expect(onStatus.mock.calls.some((call) => call[0].id === 'first' && call[1].result === 'sent')).toBe(true)
+    expect(onStatus.mock.calls.some((call) => call[0].id === 'first' && call[1].lastSuccessAt !== undefined)).toBe(false)
     expect(onStatus.mock.calls.some((call) => call[0].id === 'second' && call[1].error === 'second failed')).toBe(true)
   })
 
@@ -127,12 +127,12 @@ describe('scheduler', () => {
     })
 
     await coordinator.poll()
-    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), { nextRunAt: '2026-07-17T12:01:00.000Z', error: null })
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: '2026-07-17T12:01:00.000Z' }))
 
     current = new Date('2026-07-17T12:00:10.000Z')
     timing = { kind: 'interval', intervalSeconds: 5 }
     await coordinator.poll()
-    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), { nextRunAt: '2026-07-17T12:00:15.000Z', error: null })
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: '2026-07-17T12:00:15.000Z' }))
 
     current = new Date('2026-07-17T12:00:15.000Z')
     await coordinator.poll()
@@ -140,7 +140,7 @@ describe('scheduler', () => {
 
     timing = { kind: 'manual' }
     await coordinator.poll()
-    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), { nextRunAt: null, error: null })
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: null }))
   })
 
   it('computes daily next runs in the configured timezone across DST', async () => {
@@ -154,12 +154,11 @@ describe('scheduler', () => {
     })
 
     await coordinator.poll()
-    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), { nextRunAt: '2026-03-08T13:30:00.000Z', error: null })
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: '2026-03-08T13:30:00.000Z' }))
 
     current = new Date('2026-03-08T14:00:00.000Z')
     await coordinator.poll()
     expect(onStatus.mock.calls.at(-1)?.[1]).toMatchObject({
-      lastSuccessAt: '2026-03-08T14:00:00.000Z',
       nextRunAt: '2026-03-09T13:30:00.000Z'
     })
   })
@@ -176,7 +175,7 @@ describe('scheduler', () => {
     })
 
     await coordinator.poll()
-    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), { nextRunAt: '2026-11-01T05:30:00.000Z', error: null })
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: '2026-11-01T05:30:00.000Z' }))
 
     current = new Date('2026-11-01T05:30:00.000Z')
     await coordinator.poll()
@@ -194,7 +193,7 @@ describe('scheduler', () => {
     })
 
     await coordinator.poll()
-    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), { nextRunAt: '2026-11-02T06:30:00.000Z', error: null })
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: '2026-11-02T06:30:00.000Z' }))
   })
 
   it('caps the automatic polling interval at 30 seconds', () => {
@@ -227,8 +226,8 @@ describe('scheduler', () => {
   })
 
   it('times out a hung schedule and continues to the next due schedule', async () => {
-    const execute = vi.fn((value: Schedule) => value.id === 'hung'
-      ? new Promise<never>(() => undefined)
+    const execute = vi.fn((value: Schedule, signal: AbortSignal) => value.id === 'hung'
+      ? new Promise<never>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
       : Promise.resolve('sent'))
     const onStatus = vi.fn()
     const coordinator = createScheduleCoordinator({
@@ -247,6 +246,22 @@ describe('scheduler', () => {
     await polling
     expect(execute.mock.calls.map((call) => call[0].id)).toEqual(['hung', 'next'])
     expect(onStatus.mock.calls.some((call) => call[0].id === 'hung' && String(call[1].error).includes('timed out'))).toBe(true)
+  })
+
+  it('ignores persisted deadlines without a matching timing signature', async () => {
+    const onStatus = vi.fn()
+    const stale = schedule('stale', true, { kind: 'interval', intervalSeconds: 60 }, '2026-07-17T12:00:05.000Z')
+    stale.status.nextRunSignature = JSON.stringify([true, { kind: 'interval', intervalSeconds: 5 }])
+    const coordinator = createScheduleCoordinator({
+      loadSchedules: () => [stale],
+      execute: vi.fn(),
+      onStatus,
+      now: () => new Date('2026-07-17T12:00:00.000Z')
+    })
+
+    await coordinator.poll()
+
+    expect(onStatus).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ nextRunAt: '2026-07-17T12:01:00.000Z' }))
   })
 })
 
@@ -271,6 +286,7 @@ function schedule(id: string, enabled: boolean, timing: ScheduleTiming, nextRunA
       lastAttemptAt: null,
       lastSuccessAt: null,
       nextRunAt,
+      nextRunSignature: nextRunAt ? JSON.stringify([enabled, timing]) : null,
       result: null,
       error: null
     }

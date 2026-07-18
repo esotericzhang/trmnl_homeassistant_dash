@@ -197,13 +197,14 @@ describe('renderer', () => {
     expect(html).toContain("api('/api/schedules')")
     expect(html).toContain("api('/api/schedules',{method:'POST'")
     expect(html).toContain("+'/duplicate',{method:'POST'}")
-    expect(html).toContain("+'/config',{method:'PUT'")
+    expect(html).toContain("body:JSON.stringify({schedule:scheduleBody,config})")
     expect(html).toContain("+'/push',{method:'POST'}")
     expect(html).toContain("{method:'PATCH'")
     expect(html).toContain("{method:'DELETE'}")
     expect(html).toContain('id="schedule-webhook"')
-    expect(html.indexOf('const savedConfig=await jsonOrError')).toBeLessThan(html.indexOf('const savedSchedule=await jsonOrError'))
-    expect(html).toContain('Object.assign(target,local,saved?{status:saved.status}: {})')
+    expect(html).toContain("previewFrame.src='/schedules/'")
+    expect(html).toContain("if(draft()?.dirty&&!await saveActive())return")
+    expect(html).toContain('d.loadedSchedule=clone(target)')
   })
 
   it('includes blank schedules and manual, interval, and daily timing controls', () => {
