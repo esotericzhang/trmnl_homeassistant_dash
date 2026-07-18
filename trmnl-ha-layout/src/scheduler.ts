@@ -143,14 +143,19 @@ async function executeWithTimeout(
   timeoutMs: number
 ): Promise<void> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(new Error(`Schedule execution timed out after ${timeoutMs}ms: ${schedule.id}`)), timeoutMs)
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const execution = Promise.resolve().then(() => execute(schedule, controller.signal))
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      const error = new Error(`Schedule execution timed out after ${timeoutMs}ms: ${schedule.id}`)
+      controller.abort(error)
+      reject(error)
+    }, timeoutMs)
+  })
   try {
-    await execute(schedule, controller.signal)
-  } catch (error) {
-    if (controller.signal.aborted) throw controller.signal.reason
-    throw error
+    await Promise.race([execution, deadline])
   } finally {
-    clearTimeout(timeout)
+    if (timeout) clearTimeout(timeout)
   }
 }
 

@@ -44,14 +44,27 @@ describe('editor focus continuity', () => {
       expect(input.value).toBe(value)
     }
   })
+
+  it('preserves a masked schedule webhook through unrelated inspector edits', async () => {
+    const dom = await editorDom('••••')
+    const document = dom.window.document
+    const webhook = document.querySelector<HTMLInputElement>('#schedule-webhook')
+    const enabled = document.querySelector<HTMLInputElement>('#schedule-enabled')
+    if (!webhook || !enabled) throw new Error('schedule controls missing')
+
+    expect(webhook.value).toBe('••••')
+    enabled.checked = false
+    enabled.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    expect(webhook.value).toBe('••••')
+  })
 })
 
-async function editorDom(): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
       timing: { kind: 'manual' },
-      destination: { deviceId: null, playlistId: null, mode: null, screenId: null, webhookUrl: null, modelId: null, screenName: null, screenLabel: null },
+      destination: { deviceId: null, playlistId: null, mode: webhookUrl ? 'raw-webhook' : null, screenId: null, webhookUrl, modelId: null, screenName: null, screenLabel: null },
       status: { lastAttemptAt: null, lastSuccessAt: null, nextRunAt: null, result: null, error: null }
     }] }],
     ['/api/schedules/default/config', layout],

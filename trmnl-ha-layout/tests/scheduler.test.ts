@@ -226,8 +226,8 @@ describe('scheduler', () => {
   })
 
   it('times out a hung schedule and continues to the next due schedule', async () => {
-    const execute = vi.fn((value: Schedule, signal: AbortSignal) => value.id === 'hung'
-      ? new Promise<never>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    const execute = vi.fn((value: Schedule) => value.id === 'hung'
+      ? new Promise<never>(() => undefined)
       : Promise.resolve('sent'))
     const onStatus = vi.fn()
     const coordinator = createScheduleCoordinator({

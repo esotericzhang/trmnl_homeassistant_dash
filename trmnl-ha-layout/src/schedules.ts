@@ -420,13 +420,20 @@ function validateTiming(timing: ScheduleTiming): void {
   if (!timing || !['manual', 'interval', 'daily'].includes(timing.kind)) {
     throw new Error('Schedule timing kind must be manual, interval, or daily')
   }
-  if (timing.kind === 'interval' && (!Number.isFinite(timing.intervalSeconds) || timing.intervalSeconds <= 0)) {
-    throw new Error('Schedule intervalSeconds must be a positive number')
+  if (timing.kind === 'interval' && (!Number.isSafeInteger(timing.intervalSeconds) || timing.intervalSeconds < 1)) {
+    throw new Error('Schedule intervalSeconds must be a positive integer')
   }
   if (timing.kind === 'daily') {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(timing.time)) throw new Error('Schedule daily time must use HH:mm')
     if (timing.timezone !== null && (typeof timing.timezone !== 'string' || timing.timezone.length === 0)) {
       throw new Error('Schedule daily timezone must be text or null')
+    }
+    if (timing.timezone !== null) {
+      try {
+        new Intl.DateTimeFormat('en', { timeZone: timing.timezone }).format()
+      } catch {
+        throw new Error('Schedule daily timezone must be a valid IANA timezone')
+      }
     }
   }
 }

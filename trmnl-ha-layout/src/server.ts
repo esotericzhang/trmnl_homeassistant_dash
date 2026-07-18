@@ -103,8 +103,8 @@ function terminusOptionsForSchedule(schedule: Schedule): TerminusPushOptions {
   const legacyDefault = schedule.id === defaultScheduleId()
   return {
     ...global,
-    mode: legacyDefault ? legacyOverrides.mode ?? destination.mode ?? global.mode : destination.mode ?? 'byos-uri',
-    webhookUrl: legacyDefault ? legacyOverrides.webhookUrl ?? destination.webhookUrl ?? global.webhookUrl : destination.webhookUrl ?? undefined,
+    mode: legacyDefault ? legacyOverrides.mode ?? destination.mode ?? global.mode : destination.mode ?? global.mode,
+    webhookUrl: legacyDefault ? legacyOverrides.webhookUrl ?? destination.webhookUrl ?? global.webhookUrl : destination.webhookUrl ?? global.webhookUrl,
     modelId: legacyDefault ? legacyOverrides.modelId ?? destination.modelId ?? global.modelId : destination.modelId ?? undefined,
     screenName: legacyDefault ? legacyOverrides.screenName ?? destination.screenName ?? global.screenName : destination.screenName ?? `ha-layout-${schedule.id}`,
     screenLabel: legacyDefault ? legacyOverrides.screenLabel ?? destination.screenLabel ?? global.screenLabel : destination.screenLabel ?? schedule.name,

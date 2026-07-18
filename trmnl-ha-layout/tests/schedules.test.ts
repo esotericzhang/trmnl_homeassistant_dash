@@ -252,9 +252,17 @@ describe('schedule persistence', () => {
       timing: { kind: 'interval', intervalSeconds: 0 }
     }, layout, { ...options, idFactory: () => 'bad-interval' })).toThrow(/positive/)
     expect(() => createSchedule({
+      name: 'Fractional interval',
+      timing: { kind: 'interval', intervalSeconds: 0.5 }
+    }, layout, { ...options, idFactory: () => 'fractional-interval' })).toThrow(/integer/)
+    expect(() => createSchedule({
       name: 'Bad daily',
       timing: { kind: 'daily', time: '25:00', timezone: null }
     }, layout, { ...options, idFactory: () => 'bad-daily' })).toThrow(/HH:mm/)
+    expect(() => createSchedule({
+      name: 'Bad timezone',
+      timing: { kind: 'daily', time: '07:00', timezone: 'Not/A_Zone' }
+    }, layout, { ...options, idFactory: () => 'bad-timezone' })).toThrow(/IANA timezone/)
     expect(() => createSchedule({
       name: 'Numeric ID',
       destination: { playlistId: 42 as unknown as string }
