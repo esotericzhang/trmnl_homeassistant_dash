@@ -129,16 +129,26 @@ async function runRefreshAndPushSchedule(scheduleId: string): Promise<string> {
     const rendered = await renderSchedule(scheduleId, false)
     const result = await new TerminusClient().push(rendered.png, terminusOptionsForSchedule(schedule), rendered.svg)
     lastPush = result
-    updateSchedule(scheduleId, {
-      status: { lastSuccessAt: new Date().toISOString(), result, error: null }
+    const skipped = result.startsWith('skipped:')
+    updateSchedule(scheduleId, { status: skipped
+      ? { result, error: result }
+      : { lastSuccessAt: new Date().toISOString(), result, error: null }
     })
     return result
   } catch (error) {
     updateSchedule(scheduleId, {
-      status: { result: null, error: error instanceof Error ? error.message : String(error) }
+      status: { result: null, error: safeScheduleError(error) }
     })
     throw error
   }
+}
+
+function safeScheduleError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return message
+    .replace(/https?:\/\/[^\s)]+/g, '[redacted URL]')
+    .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
+    .slice(0, 500)
 }
 
 async function refreshAndPush(): Promise<string> {

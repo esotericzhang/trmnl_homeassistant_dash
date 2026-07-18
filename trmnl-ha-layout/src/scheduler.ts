@@ -12,6 +12,7 @@ export interface ScheduleCoordinatorOptions {
   onStatus?: (schedule: Schedule, update: ScheduleStatusUpdate) => void | Promise<void>
   now?: () => Date
   pollIntervalMs?: number
+  executionTimeoutMs?: number
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void
 }
@@ -30,6 +31,7 @@ interface ScheduleState {
 export function createScheduleCoordinator(options: ScheduleCoordinatorOptions): ScheduleCoordinator {
   const now = options.now ?? (() => new Date())
   const pollIntervalMs = Math.min(MAX_COORDINATOR_POLL_MS, Math.max(1, options.pollIntervalMs ?? MAX_COORDINATOR_POLL_MS))
+  const executionTimeoutMs = Math.max(1, options.executionTimeoutMs ?? 60_000)
   const setTimer = options.setTimer ?? setTimeout
   const clearTimer = options.clearTimer ?? clearTimeout
   const states = new Map<string, ScheduleState>()
@@ -70,7 +72,7 @@ export function createScheduleCoordinator(options: ScheduleCoordinatorOptions): 
         const attemptedAt = currentTime.toISOString()
         await report(schedule, { lastAttemptAt: attemptedAt, nextRunAt: null, result: null, error: null })
         try {
-          const result = await options.execute(schedule)
+          const result = await withTimeout(options.execute(schedule), executionTimeoutMs, schedule.id)
           const completedAt = now()
           const calculated = calculateNextRun(schedule, completedAt)
           state.nextRunAt = calculated.nextRunAt
@@ -98,9 +100,15 @@ export function createScheduleCoordinator(options: ScheduleCoordinatorOptions): 
 
   const schedulePoll = () => {
     if (stopped) return
+    const currentTime = now().getTime()
+    const earliestRun = [...states.values()]
+      .map((state) => state.nextRunAt?.getTime())
+      .filter((value): value is number => value !== undefined)
+      .reduce<number | undefined>((earliest, value) => earliest === undefined ? value : Math.min(earliest, value), undefined)
+    const delayMs = earliestRun === undefined ? pollIntervalMs : Math.max(1, Math.min(pollIntervalMs, earliestRun - currentTime))
     timer = setTimer(() => {
       void poll().finally(schedulePoll)
-    }, pollIntervalMs)
+    }, delayMs)
   }
 
   return {
@@ -116,6 +124,16 @@ export function createScheduleCoordinator(options: ScheduleCoordinatorOptions): 
     },
     poll
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, scheduleId: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Schedule execution timed out after ${timeoutMs}ms: ${scheduleId}`)), timeoutMs)
+    promise.then(
+      (value) => { clearTimeout(timeout); resolve(value) },
+      (error) => { clearTimeout(timeout); reject(error) }
+    )
+  })
 }
 
 export function startScheduler(seconds: number, job: () => Promise<unknown>): NodeJS.Timeout | undefined {

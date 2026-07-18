@@ -26,7 +26,7 @@ Open `http://localhost:10000/` to edit the layout and connection settings, or us
 
 ## Home Assistant add-on
 
-Add this repository to Home Assistant, install **TRMNL HA Layout**, configure the add-on options or the editor connection settings, and mount/edit `/data/layout.yaml` if you want custom positions.
+Add this repository to Home Assistant, install **TRMNL HA Layout**, and configure the add-on options or editor connection settings. On a new install, create and edit layouts through the editor. On upgrade, an existing `/data/layout.yaml` is imported once into the default schedule; active layouts then live under `/data/schedules/<schedule-id>/layout.yaml`.
 
 ## Docker Compose deployment
 
@@ -59,7 +59,7 @@ Start the app:
 docker compose up -d
 ```
 
-Then open `http://localhost:10000/editor` to edit the layout and save Connection Settings. The `/data` mount persists both `layout.yaml` and GUI-saved `settings.json` across container upgrades.
+Then open `http://localhost:10000/editor` to edit schedules and save global connection settings. The `/data` mount persists `settings.json`, `schedules/index.json`, and each `schedules/<schedule-id>/layout.yaml` across container upgrades. A legacy `layout.yaml` is migration input only after schedules have been initialized.
 
 Use a Home Assistant URL reachable from inside the container. A LAN IP, such as `http://192.168.1.50:8123`, is usually more reliable than `homeassistant.local` or `localhost` in Docker.
 
@@ -106,7 +106,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 
 - `HOME_ASSISTANT_URL`: Home Assistant base URL, for example `http://homeassistant:8123`.
 - `ACCESS_TOKEN` or `HA_TOKEN`: Home Assistant long-lived token.
-- `LAYOUT_PATH`: Optional path to YAML layout, default `/data/layout.yaml` when available, otherwise `./data/default-layout.yaml`.
+- `LAYOUT_PATH`: Optional legacy layout path used as first-run migration input and to locate the persistent settings/schedules directory. After migration, active layouts are stored under `schedules/<schedule-id>/layout.yaml` beside it.
 - `ADDON_BASE_URL`: Add-on URL Terminus can use to fetch this dashboard's `/screen.png` in `byos-uri` mode. `PUBLIC_BASE_URL` remains supported as a legacy alias.
 - `TERMINUS_API_URL`: Terminus base URL, for example `http://terminus:2300`.
 - `TERMINUS_LOGIN` / `TERMINUS_PASSWORD`: Optional environment/add-on Terminus login for JWT access. The editor login flow stores returned JWT tokens, not credentials.

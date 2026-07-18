@@ -201,6 +201,9 @@ describe('renderer', () => {
     expect(html).toContain("+'/push',{method:'POST'}")
     expect(html).toContain("{method:'PATCH'")
     expect(html).toContain("{method:'DELETE'}")
+    expect(html).toContain('id="schedule-webhook"')
+    expect(html.indexOf('const savedConfig=await jsonOrError')).toBeLessThan(html.indexOf('const savedSchedule=await jsonOrError'))
+    expect(html).toContain('Object.assign(target,local,saved?{status:saved.status}: {})')
   })
 
   it('includes blank schedules and manual, interval, and daily timing controls', () => {

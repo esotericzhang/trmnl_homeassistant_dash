@@ -54,6 +54,8 @@ The `/editor` Connection Settings panel was simplified to match upstream `usetrm
 
 `src/schedules.ts` owns the versioned schedule store. `schedules/index.json` lives beside `settings.json`; layouts remain YAML at `schedules/<id>/layout.yaml`. First startup migrates the legacy layout/settings into the stable `default` schedule, writes the index last, and leaves the original files untouched. Legacy `/api/config`, `/api/refresh`, `/screen.*`, and `/render` routes always resolve through the persisted `defaultScheduleId`.
 
+When `settings.json` exists, migration reads it strictly and must fail before publishing `index.json` if it is malformed. `layout.yaml` and `LAYOUT_PATH` are migration inputs after schedules initialize; later file edits must target `schedules/<id>/layout.yaml` or use the editor/API.
+
 Each schedule owns `manual`, `interval`, or `daily` timing, enabled state, text-ID destination fallbacks, optional delivery/screen metadata, and latest status. Home Assistant connection and Terminus API/JWT remain global. Legacy schedule-specific environment/add-on options apply only to the default schedule; new schedules receive unique `ha-layout-<id>` Terminus names and `/schedules/<id>/screen.png` BYOS URIs.
 
 `createScheduleCoordinator()` reloads metadata every poll, runs due schedules serially, prevents overlapping polls, and persists status through a callback. Daily scheduling uses `Intl` timezone calculations. Device registry selectors, proactive shared token refresh, and direct known-screen PATCH remain follow-up optimizations; do not copy registry objects or auth tokens into schedule records.

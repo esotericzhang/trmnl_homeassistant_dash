@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import {
   loadLayoutConfig,
   getRuntimeConfig,
+  loadSettings,
   loadSettingsSafe,
   resolveLayoutPath,
   resolveSettingsPath,
@@ -124,7 +125,9 @@ export function migrateLegacySchedule(options: SchedulePersistenceOptions = {}):
   if (fs.existsSync(paths.indexPath)) return loadIndexFile(paths.indexPath)
 
   const legacyLayout = loadLayoutConfig(paths.legacyLayoutPath)
-  const settings = loadSettingsSafe(paths.settingsPath)
+  const settings = fs.existsSync(paths.settingsPath)
+    ? loadSettings(paths.settingsPath)
+    : loadSettingsSafe(paths.settingsPath)
   const useRuntimeOverrides = !options.schedulesDirectory && !options.legacyLayoutPath && !options.settingsPath
   const schedule = legacySchedule(
     settings,

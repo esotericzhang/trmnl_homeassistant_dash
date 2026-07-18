@@ -118,6 +118,16 @@ describe('server routes', () => {
     expect(visible.status.result).not.toBe('forged')
   })
 
+  it('records skipped pushes without marking them successful', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/push`, { method: 'POST' })
+    expect(response.ok).toBe(true)
+    const body = await response.json() as { status: { result: string; lastSuccessAt: string | null; error: string } }
+    expect(body.status.result).toMatch(/^skipped:/)
+    expect(body.status.lastSuccessAt).toBeNull()
+    expect(body.status.error).toMatch(/^skipped:/)
+  })
+
   it('serves preview refresh with stored bearer token', async () => {
     const preview = await fetch(`${baseUrl}/preview`)
     const previewHtml = await preview.text()

@@ -210,6 +210,44 @@ describe('scheduler', () => {
     coordinator.start()
     return vi.waitFor(() => expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 30_000))
   })
+
+  it('wakes at the earliest interval deadline below 30 seconds', async () => {
+    const setTimer = vi.fn(() => 1 as unknown as NodeJS.Timeout)
+    const coordinator = createScheduleCoordinator({
+      loadSchedules: () => [schedule('fast', true, { kind: 'interval', intervalSeconds: 5 })],
+      execute: vi.fn(),
+      now: () => new Date('2026-07-17T12:00:00.000Z'),
+      setTimer,
+      clearTimer: vi.fn()
+    })
+
+    coordinator.start()
+    await vi.waitFor(() => expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 5_000))
+    coordinator.stop()
+  })
+
+  it('times out a hung schedule and continues to the next due schedule', async () => {
+    const execute = vi.fn((value: Schedule) => value.id === 'hung'
+      ? new Promise<never>(() => undefined)
+      : Promise.resolve('sent'))
+    const onStatus = vi.fn()
+    const coordinator = createScheduleCoordinator({
+      loadSchedules: () => [
+        schedule('hung', true, { kind: 'interval', intervalSeconds: 1 }, '2026-07-17T11:59:59.000Z'),
+        schedule('next', true, { kind: 'interval', intervalSeconds: 1 }, '2026-07-17T11:59:59.000Z')
+      ],
+      execute,
+      onStatus,
+      executionTimeoutMs: 5,
+      now: () => new Date('2026-07-17T12:00:00.000Z')
+    })
+
+    const polling = coordinator.poll()
+    await vi.advanceTimersByTimeAsync(5)
+    await polling
+    expect(execute.mock.calls.map((call) => call[0].id)).toEqual(['hung', 'next'])
+    expect(onStatus.mock.calls.some((call) => call[0].id === 'hung' && String(call[1].error).includes('timed out'))).toBe(true)
+  })
 })
 
 function schedule(id: string, enabled: boolean, timing: ScheduleTiming, nextRunAt: string | null = null): Schedule {

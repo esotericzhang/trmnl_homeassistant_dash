@@ -112,6 +112,13 @@ describe('schedule persistence', () => {
     expect(migrateLegacySchedule(options).schedules[0].timing).toEqual({ kind: 'manual' })
   })
 
+  it('does not publish migration when an existing settings file is malformed', () => {
+    fs.writeFileSync(settingsPath, '{ invalid json', 'utf8')
+
+    expect(() => migrateLegacySchedule(options)).toThrow()
+    expect(fs.existsSync(path.join(schedulesDirectory, 'index.json'))).toBe(false)
+  })
+
   it('is idempotent and ignores later legacy changes once the index exists', () => {
     const first = ensureSchedules(options)
     const migratedLayoutPath = resolveScheduleLayoutPath('default', schedulesDirectory)
