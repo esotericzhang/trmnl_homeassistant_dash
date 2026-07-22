@@ -85,6 +85,7 @@ async function editorDom(webhookUrl: string | null = null): Promise<JSDOM> {
       Object.defineProperty(window, 'confirm', { value: () => true })
       Object.defineProperty(window, 'prompt', { value: () => null })
       Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', { value: () => undefined })
+      Object.defineProperty(window, 'requestAnimationFrame', { value: (cb: (frame?: number) => void) => { cb(); return 1 } })
     }
   })
 
