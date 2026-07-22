@@ -42,6 +42,24 @@ describe('TerminusClient', () => {
     })
   })
 
+  it('uses a schedule-specific BYOS URI when provided', async () => {
+    let body = ''
+    const fetcher = (async (_url: URL | RequestInfo, init?: RequestInit) => {
+      body = String(init?.body)
+      return json({ id: 7 })
+    }) as typeof fetch
+
+    await new TerminusClient(fetcher).push(png, {
+      apiUrl: 'http://terminus.local',
+      accessToken: 'jwt',
+      publicBaseUrl: 'http://addon.local/base/',
+      mode: 'byos-uri',
+      screenUri: '/schedules/evening/screen.png'
+    })
+
+    expect(JSON.parse(body).screen.uri).toBe('http://addon.local/schedules/evening/screen.png')
+  })
+
   it('refreshes configured tokens before posting', async () => {
     const authorizations: string[] = []
     const fetcher = (async (url: URL | RequestInfo, init?: RequestInit) => {

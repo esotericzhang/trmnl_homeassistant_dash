@@ -5,12 +5,13 @@ A Home Assistant compatible add-on and standalone Docker app that renders Home A
 ## Features
 
 - Home Assistant REST API client configured from the editor settings UI, Home Assistant add-on options, or environment variables.
-- YAML layout file with explicit `x`, `y`, `width`, `height`, `fontSize`, `align`, and related positioning controls.
+- Multiple named schedules, each with its own YAML layout, enabled state, manual/interval/daily timing, destination metadata, and push status.
+- YAML layout files with explicit `x`, `y`, `width`, `height`, `fontSize`, `align`, and related positioning controls.
 - Default Sleep + Weather dashboard for the Seeed Studio TRMNL 7.5-inch OG DIY Kit, 800x480.
-- Pull endpoints for Terminus or browsers: `/screen.png`, `/screen.svg`, `/render`, `/preview`.
-- Browser layout editor at `/` and `/editor` with drag, resize, style controls, connection settings, and YAML save through `/api/config`.
+- Pull endpoints for Terminus or browsers, with legacy default-schedule routes and stable `/schedules/:id/*` routes.
+- Browser layout editor at `/` and `/editor` with responsive schedule tabs, a searchable manager, drag/resize/style controls, and global connection settings.
 - Push endpoint/job for Terminus BYOS Hanami/JWT `/api/screens` or generic PNG webhooks.
-- Refresh scheduling through the editor settings UI or `REFRESH_INTERVAL_SECONDS`.
+- Per-schedule refresh timing through the editor. Legacy `REFRESH_INTERVAL_SECONDS` seeds the migrated default schedule.
 
 ## Standalone quick start
 
@@ -21,15 +22,15 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:10000/` to edit the layout and connection settings, or use `http://localhost:10000/preview` for the preview page.
+Open `http://localhost:10000/` to edit schedules and global connection settings, or use `http://localhost:10000/preview` for the default-schedule preview page.
 
 ## Home Assistant add-on
 
-Add this repository to Home Assistant, install **TRMNL HA Layout**, configure the add-on options or the editor connection settings, and mount/edit `/data/layout.yaml` if you want custom positions.
+Add this repository to Home Assistant, install **TRMNL HA Layout**, and configure the add-on options or editor connection settings. On a new install, create and edit layouts through the editor. On upgrade, an existing `/data/layout.yaml` is imported once into the default schedule; active layouts then live under `/data/schedules/<schedule-id>/layout.yaml`.
 
 ## Docker Compose deployment
 
-Use Docker Compose when running this dashboard outside Home Assistant. Start with Home Assistant access only; Terminus can be configured later in the browser UI at `/editor` under **Connection Settings**.
+Use Docker Compose when running this dashboard outside Home Assistant. Start with Home Assistant access only; Terminus can be configured later from **Global connection** in `/editor`.
 
 A prebuilt multi-arch image (amd64 + arm64) is published to GHCR on every push to `main`:
 
@@ -58,7 +59,7 @@ Start the app:
 docker compose up -d
 ```
 
-Then open `http://localhost:10000/editor` to edit the layout and save Connection Settings. The `/data` mount persists both `layout.yaml` and GUI-saved `settings.json` across container upgrades.
+Then open `http://localhost:10000/editor` to edit schedules and save global connection settings. The `/data` mount persists `settings.json`, `schedules/index.json`, and each `schedules/<schedule-id>/layout.yaml` across container upgrades. A legacy `layout.yaml` is migration input only after schedules have been initialized.
 
 Use a Home Assistant URL reachable from inside the container. A LAN IP, such as `http://192.168.1.50:8123`, is usually more reliable than `homeassistant.local` or `localhost` in Docker.
 
@@ -72,10 +73,10 @@ The image runs with `NODE_ENV=production`, so mutating endpoints are blocked unl
 Terminus settings can usually be saved in the editor instead of Compose. Use environment variables when you want container-managed configuration:
 
 - `TERMINUS_API_URL`: Terminus base URL reachable from the dashboard container when using Terminus push modes.
-- `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`.
+- `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook` for the default schedule.
 - `ADDON_BASE_URL`: Required only for `byos-uri`; this is the URL Terminus can use to fetch this dashboard's `/screen.png`.
-- `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
-- `SETTINGS_TOKEN`: Optional bearer token for mutating layout, settings, refresh, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it.
+- `REFRESH_INTERVAL_SECONDS`: Optional interval used to seed the default schedule during first-run migration.
+- `SETTINGS_TOKEN`: Optional bearer token for all mutating schedule, layout, settings, refresh, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it.
 
 Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
 
@@ -93,27 +94,29 @@ Add-on URL examples for `byos-uri`:
 
 ## Configuration and settings
 
-The editor's **Connection Settings** panel saves runtime settings to `settings.json` next to the layout file. With the default add-on layout path this is `/data/settings.json`; with a custom `LAYOUT_PATH` it is `settings.json` in the same directory as that layout; in standalone development it is `./settings.json`.
+The editor's **Global connection** panel saves shared Home Assistant and Terminus authentication settings to `settings.json` next to the legacy layout file. With the default add-on layout path this is `/data/settings.json`; with a custom `LAYOUT_PATH` it is `settings.json` in the same directory as that layout; in standalone development it is `./settings.json`.
 
-Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Refreshes re-read connection and Terminus settings before each push, so those GUI settings changes do not require a restart; changing `refresh_interval_seconds` affects scheduling after restart.
+Schedules are stored in `schedules/index.json`, with each layout at `schedules/<schedule-id>/layout.yaml`. On first startup after upgrading, the existing single `layout.yaml` and its refresh/destination settings are copied into a `default` schedule. The original files remain in place, and legacy routes continue to resolve to that persisted default schedule.
 
-Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
+Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Pushes re-read shared connection and Terminus settings. Schedule timing changes are reloaded by the coordinator without a restart; legacy `refresh_interval_seconds` applies only to the migrated default schedule.
+
+Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for schedule changes, layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
 ## Important environment variables
 
 - `HOME_ASSISTANT_URL`: Home Assistant base URL, for example `http://homeassistant:8123`.
 - `ACCESS_TOKEN` or `HA_TOKEN`: Home Assistant long-lived token.
-- `LAYOUT_PATH`: Optional path to YAML layout, default `/data/layout.yaml` when available, otherwise `./data/default-layout.yaml`.
+- `LAYOUT_PATH`: Optional legacy layout path used as first-run migration input and to locate the persistent settings/schedules directory. After migration, active layouts are stored under `schedules/<schedule-id>/layout.yaml` beside it.
 - `ADDON_BASE_URL`: Add-on URL Terminus can use to fetch this dashboard's `/screen.png` in `byos-uri` mode. `PUBLIC_BASE_URL` remains supported as a legacy alias.
 - `TERMINUS_API_URL`: Terminus base URL, for example `http://terminus:2300`.
 - `TERMINUS_LOGIN` / `TERMINUS_PASSWORD`: Optional environment/add-on Terminus login for JWT access. The editor login flow stores returned JWT tokens, not credentials.
 - `TERMINUS_ACCESS_TOKEN` / `TERMINUS_REFRESH_TOKEN`: Optional manual Terminus JWT tokens.
-- `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`.
-- `TERMINUS_MODEL_ID`, `TERMINUS_SCREEN_NAME`, `TERMINUS_SCREEN_LABEL`, `TERMINUS_PLAYLIST_ID`: Optional screen metadata for BYOS pushes; defaults are used when omitted.
-- `TERMINUS_SCREEN_ID`: Optional fallback for duplicate-screen cleanup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
-- `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint for `raw-webhook` mode.
-- `REFRESH_INTERVAL_SECONDS`: Optional periodic refresh/push interval.
-- `SETTINGS_TOKEN`: Optional bearer token required for mutating layout, settings, refresh, and Terminus auth requests.
+- `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook`; this legacy override applies only to the default schedule.
+- `TERMINUS_MODEL_ID`, `TERMINUS_SCREEN_NAME`, `TERMINUS_SCREEN_LABEL`, `TERMINUS_PLAYLIST_ID`: Optional default-schedule screen metadata overrides for BYOS pushes.
+- `TERMINUS_SCREEN_ID`: Optional default-schedule fallback for duplicate-screen lookup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
+- `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint override for the default schedule's `raw-webhook` mode.
+- `REFRESH_INTERVAL_SECONDS`: Optional interval used to seed the default schedule during first-run migration; later schedule timing is edited per schedule.
+- `SETTINGS_TOKEN`: Optional bearer token required for all mutating schedule, layout, settings, refresh, and Terminus auth requests.
 - `ALLOW_NO_AUTH`: Set to `1` to allow unauthenticated settings mutations without the development warning.
 
 `ADDON_BASE_URL` / `addon_base_url` take precedence over legacy `PUBLIC_BASE_URL` / `public_base_url`; existing legacy values continue to work when the new alias is unset.
@@ -122,18 +125,28 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 
 - `GET /health`: service status.
 - `GET /`: redirects to `/editor`.
-- `GET /screen.png`: renders the current dashboard as an 800x480 PNG.
-- `GET /screen.svg`: renders the current dashboard as SVG.
-- `GET /render`: wraps the SVG in HTML.
-- `GET /preview`: minimal preview and refresh UI.
-- `GET /editor`: browser layout and connection settings editor for the 800x480 frame. Accepts `?token=<SETTINGS_TOKEN>` for mutating requests.
-- `POST /api/refresh`: fetches Home Assistant state and optionally pushes to Terminus/webhook.
-- `GET /api/config`: returns resolved layout configuration.
-- `PUT /api/config`: validates and saves layout YAML to the runtime layout path.
+- `GET /screen.png`: renders the persisted default schedule as an 800x480 PNG. Use `/schedules/:id/screen.png` for another schedule.
+- `GET /screen.svg`: renders the persisted default schedule as SVG.
+- `GET /render`: wraps the persisted default schedule's SVG in HTML.
+- `GET /preview`: minimal default-schedule preview and refresh UI.
+- `GET /editor`: browser schedule, layout, and global connection settings editor for the 800x480 frame. Accepts `?token=<SETTINGS_TOKEN>` for mutating requests.
+- `POST /api/refresh`: fetches Home Assistant state and pushes the persisted default schedule.
+- `GET /api/config`: returns the persisted default schedule's layout configuration.
+- `PUT /api/config`: validates and saves the persisted default schedule's layout.
+- `GET /api/schedules`: lists schedules and the legacy default schedule ID.
+- `POST /api/schedules`: creates a disabled blank schedule.
+- `GET /api/schedules/:id`: returns one schedule.
+- `PATCH /api/schedules/:id`: updates schedule identity, enabled state, timing, or destination; status is server-owned.
+- `DELETE /api/schedules/:id`: deletes only the local schedule and layout when at least one other schedule remains.
+- `POST /api/schedules/:id/duplicate`: duplicates a schedule as a disabled copy with cleared remote status.
+- `GET /api/schedules/:id/config` and `PUT /api/schedules/:id/config`: load or save one schedule's layout.
+- `PUT /api/schedules/:id`: validates and saves one schedule and its layout together.
+- `POST /api/schedules/:id/push`: renders and pushes one schedule immediately, even when it is disabled.
+- `GET /schedules/:id/screen.png`, `/screen.svg`, `/render`: stable schedule-specific output routes.
 - `GET /api/settings`: returns GUI settings with tokens masked.
 - `PUT /api/settings`: validates and saves GUI settings, preserving already-masked stored tokens.
 - `POST /api/terminus/login`: exchanges a Terminus API URL, login, and password for stored JWT tokens.
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-Mutating endpoints (`PUT /api/config`, `POST /api/refresh`, `PUT /api/settings`, and `/api/terminus/*`) require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+All mutating `/api/schedules*`, `/api/config`, `/api/refresh`, `/api/settings`, and `/api/terminus/*` endpoints require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.

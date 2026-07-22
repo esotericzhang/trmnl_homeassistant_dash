@@ -3,19 +3,20 @@ import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
 
-  async getState(entityId: string): Promise<HassState> {
+  async getState(entityId: string, signal?: AbortSignal): Promise<HassState> {
     if (!this.token) throw new Error('Missing Home Assistant token')
     const url = new URL(`/api/states/${entityId}`, this.baseUrl)
     const response = await this.fetcher(url, {
-      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+      signal
     })
     if (!response.ok) throw new Error(`Home Assistant ${entityId} failed: ${response.status}`)
     return response.json() as Promise<HassState>
   }
 
-  async collect(config: LayoutConfig): Promise<RenderData> {
+  async collect(config: LayoutConfig, signal?: AbortSignal): Promise<RenderData> {
     const entries = await Promise.all(
-      Object.entries(config.data.entities).map(async ([key, entity]) => [key, await this.getState(entity)] as const)
+      Object.entries(config.data.entities).map(async ([key, entity]) => [key, await this.getState(entity, signal)] as const)
     )
     const states: HassStateMap = Object.fromEntries(entries)
     const values = Object.fromEntries(entries.map(([key, state]) => [key, state.state]))
