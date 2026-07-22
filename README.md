@@ -9,7 +9,7 @@ A Home Assistant compatible add-on and standalone Docker app that renders Home A
 - YAML layout files with explicit `x`, `y`, `width`, `height`, `fontSize`, `align`, and related positioning controls.
 - Default Sleep + Weather dashboard for the Seeed Studio TRMNL 7.5-inch OG DIY Kit, 800x480.
 - Pull endpoints for Terminus or browsers, with legacy default-schedule routes and stable `/schedules/:id/*` routes.
-- Browser layout editor at `/` and `/editor` with responsive schedule tabs, a searchable manager, drag/resize/style controls, and global connection settings.
+- Browser layout editor at `/` and `/editor` with responsive schedule tabs, a searchable manager, drag/resize/style controls, global connection settings, and a searchable live Home Assistant entity picker for sensor fields.
 - Push endpoint/job for Terminus BYOS Hanami/JWT `/api/screens` or generic PNG webhooks.
 - Per-schedule refresh timing through the editor. Legacy `REFRESH_INTERVAL_SECONDS` seeds the migrated default schedule.
 
@@ -23,6 +23,8 @@ npm run dev
 ```
 
 Open `http://localhost:10000/` to edit schedules and global connection settings, or use `http://localhost:10000/preview` for the default-schedule preview page.
+
+When adding a **Sensor value** field, the editor loads entities from the configured Home Assistant instance and lets you search by friendly name, entity ID, or domain. Results show the current state and unit when available. The entity ID remains a normal text input, so existing or uncommon IDs that discovery does not return can still be entered manually.
 
 ## Home Assistant add-on
 
@@ -144,9 +146,10 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `POST /api/schedules/:id/push`: renders and pushes one schedule immediately, even when it is disabled.
 - `GET /schedules/:id/screen.png`, `/screen.svg`, `/render`: stable schedule-specific output routes.
 - `GET /api/settings`: returns GUI settings with tokens masked.
+- `GET /api/home-assistant/entities`: uses the active runtime Home Assistant URL/token to return filtered entity summaries (`entityId`, optional `friendlyName`, `domain`, `state`, and optional `unitOfMeasurement`) for the editor picker. It never returns the Home Assistant token or arbitrary state attributes.
 - `PUT /api/settings`: validates and saves GUI settings, preserving already-masked stored tokens.
 - `POST /api/terminus/login`: exchanges a Terminus API URL, login, and password for stored JWT tokens.
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-All mutating `/api/schedules*`, `/api/config`, `/api/refresh`, `/api/settings`, and `/api/terminus/*` endpoints require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured.
+All mutating `/api/schedules*`, `/api/config`, `/api/refresh`, `/api/settings`, and `/api/terminus/*` endpoints require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured. Entity discovery at `GET /api/home-assistant/entities` uses the same protection because entity names and states may be private; the editor sends its stored settings token automatically.

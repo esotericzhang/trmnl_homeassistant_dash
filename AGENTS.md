@@ -10,7 +10,7 @@ All commands run from `trmnl-ha-layout/`:
 
 - `npm run build` — TypeScript compile to `dist/` (entrypoint `dist/src/server.js`).
 - `npm run typecheck` — `tsc --noEmit` (authoritative type check; SourceKit is unreliable).
-- `npm test` — vitest run. 85 tests across 10 files.
+- `npm test` — vitest run. 97 tests across 10 files.
 - `npm run lint` — eslint `. --ext .ts`. `vitest.config.ts` is ignored (not in tsconfig project).
 
 Tests share a vitest setup (`tests/setup.ts`) that redirects `LAYOUT_PATH` to a temp dir so `settings.json` bootstrap-on-first-read never pollutes the repo root. New tests that touch settings/env should follow the same pattern (pass explicit settings paths or set `LAYOUT_PATH` to a temp dir).
@@ -30,7 +30,7 @@ Global config precedence (highest first): `process.env` → `/data/options.json`
 
 ## Settings GUI auth
 
-`SETTINGS_TOKEN` env var (or `settings.settingsToken`) gates every mutating schedule, config, refresh, settings, and Terminus endpoint. If unset, mutations are allowed with a logged warning (dev fallback). `ALLOW_NO_AUTH=1` silences the warning explicitly. The `/editor` page accepts `?token=` and stores it in `sessionStorage`; the client attaches `Authorization: Bearer <token>` to all fetches. Do not regress: `GET /api/settings` must never return full `haToken`, `terminus.login`, `terminus.password`, or raw JWTs, and schedule API responses must mask webhook URLs.
+`SETTINGS_TOKEN` env var (or `settings.settingsToken`) gates every mutating schedule, config, refresh, settings, and Terminus endpoint, plus read-only Home Assistant entity discovery because entity names/states may be private. If unset, protected routes are allowed with a logged warning (dev fallback). `ALLOW_NO_AUTH=1` silences the warning explicitly. The `/editor` page accepts `?token=` and stores it in `sessionStorage`; the client attaches `Authorization: Bearer <token>` to all fetches. Do not regress: `GET /api/settings` must never return full `haToken`, `terminus.login`, `terminus.password`, or raw JWTs, entity discovery must expose only its UI summary fields, and schedule API responses must mask webhook URLs.
 
 ## TerminusClient.login / refresh
 
@@ -45,3 +45,10 @@ When `settings.json` exists, migration reads it strictly and must fail before pu
 Each schedule owns `manual`, `interval`, or `daily` timing, enabled state, text-ID destination fallbacks, optional delivery/screen metadata, and latest status. Home Assistant connection and Terminus API/JWT remain global. Legacy schedule-specific environment/add-on options apply only to the default schedule; new schedules receive unique `ha-layout-<id>` Terminus names and `/schedules/<id>/screen.png` BYOS URIs.
 
 `createScheduleCoordinator()` reloads metadata every poll, runs due schedules serially, prevents overlapping polls, and persists status through a callback. Daily scheduling uses `Intl` timezone calculations. Device registry selectors, proactive shared token refresh, and direct known-screen PATCH remain follow-up optimizations; do not copy registry objects or auth tokens into schedule records.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

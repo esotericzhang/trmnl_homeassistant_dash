@@ -15,7 +15,7 @@ import {
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
-import { HomeAssistantClient, sampleRenderData } from './homeAssistant.js'
+import { HomeAssistantClient, HomeAssistantRequestError, sampleRenderData } from './homeAssistant.js'
 import { renderEditorHtml, renderHtml, renderPng, renderSvg } from './render.js'
 import { createScheduleCoordinator } from './scheduler.js'
 import { legacyScheduleTerminusOverrides, TerminusClient, terminusOptionsFromEnv } from './terminus.js'
@@ -34,6 +34,7 @@ import {
   updateSchedule
 } from './schedules.js'
 import type { Schedule, UpdateScheduleInput } from './schedules.js'
+import type { HassEntitySummary, HassState } from './types.js'
 
 const runtime = getRuntimeConfig()
 const app = express()
@@ -278,6 +279,56 @@ app.post('/api/refresh', async (req, res, next) => {
 app.get('/api/settings', (_req, res, next) => {
   try { res.json(loadSettingsMasked()) } catch (error) { next(error) }
 })
+
+app.get('/api/home-assistant/entities', async (req, res) => {
+  if (!requireMutationAuth(req, res)) return
+  const config = await currentRuntime()
+  if (!config.accessToken) {
+    res.status(400).json({ status: 'error', message: 'Home Assistant credentials are not configured. Add a long-lived token in Global connection.' })
+    return
+  }
+  try {
+    const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates()
+    const entities = states
+      .filter(validHassState)
+      .map(entitySummary)
+      .sort((left, right) => left.domain.localeCompare(right.domain)
+        || (left.friendlyName ?? left.entityId).localeCompare(right.friendlyName ?? right.entityId)
+        || left.entityId.localeCompare(right.entityId))
+    res.json({ entities })
+  } catch (error) {
+    if (error instanceof HomeAssistantRequestError) {
+      const authFailure = error.status === 401 || error.status === 403
+      res.status(authFailure ? error.status : 502).json({
+        status: 'error',
+        message: authFailure
+          ? `Home Assistant rejected the configured credentials (${error.status}).`
+          : `Home Assistant entity discovery failed (${error.status}).`
+      })
+      return
+    }
+    res.status(502).json({ status: 'error', message: 'Could not connect to the configured Home Assistant instance.' })
+  }
+})
+
+function validHassState(value: unknown): value is HassState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as Partial<HassState>
+  return typeof state.entity_id === 'string' && state.entity_id.includes('.')
+    && typeof state.state === 'string' && !!state.attributes && typeof state.attributes === 'object'
+}
+
+function entitySummary(state: HassState): HassEntitySummary {
+  const friendlyName = typeof state.attributes.friendly_name === 'string' ? state.attributes.friendly_name : undefined
+  const unitOfMeasurement = typeof state.attributes.unit_of_measurement === 'string' ? state.attributes.unit_of_measurement : undefined
+  return {
+    entityId: state.entity_id,
+    ...(friendlyName ? { friendlyName } : {}),
+    domain: state.entity_id.split('.', 1)[0],
+    state: state.state,
+    ...(unitOfMeasurement ? { unitOfMeasurement } : {})
+  }
+}
 
 app.put('/api/settings', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return

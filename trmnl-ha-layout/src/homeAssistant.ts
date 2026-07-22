@@ -14,6 +14,16 @@ export class HomeAssistantClient {
     return response.json() as Promise<HassState>
   }
 
+  async getStates(signal?: AbortSignal): Promise<HassState[]> {
+    if (!this.token) throw new Error('Missing Home Assistant token')
+    const response = await this.fetcher(new URL('/api/states', this.baseUrl), {
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+      signal
+    })
+    if (!response.ok) throw new HomeAssistantRequestError(response.status)
+    return response.json() as Promise<HassState[]>
+  }
+
   async collect(config: LayoutConfig, signal?: AbortSignal): Promise<RenderData> {
     const entries = await Promise.all(
       Object.entries(config.data.entities).map(async ([key, entity]) => [key, await this.getState(entity, signal)] as const)
@@ -21,6 +31,12 @@ export class HomeAssistantClient {
     const states: HassStateMap = Object.fromEntries(entries)
     const values = Object.fromEntries(entries.map(([key, state]) => [key, state.state]))
     return { values, states }
+  }
+}
+
+export class HomeAssistantRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Home Assistant request failed: ${status}`)
   }
 }
 

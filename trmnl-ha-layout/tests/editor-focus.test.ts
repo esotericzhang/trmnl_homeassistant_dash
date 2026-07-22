@@ -109,6 +109,59 @@ describe('editor focus continuity', () => {
     expect(preview?.textContent).toContain('{{ humidity }}')
   })
 
+  it('searches discovered entities and selects one without blocking manual IDs', async () => {
+    const dom = await editorDom(null, {
+      entities: [
+        { entityId: 'light.porch', friendlyName: '<img src=x onerror=alert(1)>', domain: 'light', state: 'on' },
+        { entityId: 'sensor.kitchen_temperature', friendlyName: 'Kitchen Temperature', domain: 'sensor', state: '21.5', unitOfMeasurement: '°C' }
+      ]
+    })
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelectorAll('.entity-option')).toHaveLength(2))
+
+    expect(document.querySelector('.entity-results img')).toBeNull()
+    const search = document.querySelector<HTMLInputElement>('#entity-search')
+    if (!search) throw new Error('entity search missing')
+    search.value = 'kitchen'
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    expect(document.querySelectorAll('.entity-option')).toHaveLength(1)
+    expect(document.querySelector('.entity-option')?.textContent).toContain('Kitchen Temperature')
+    expect(document.querySelector('.entity-option')?.textContent).toContain('21.5 °C')
+
+    document.querySelector<HTMLButtonElement>('.entity-option')?.click()
+    expect(document.querySelector<HTMLInputElement>('#new-entity')?.value).toBe('sensor.kitchen_temperature')
+    expect(document.querySelector<HTMLInputElement>('#new-label')?.value).toBe('Kitchen Temperature')
+    expect(document.querySelector<HTMLInputElement>('#new-source')?.value).toBe('kitchenTemperature')
+  })
+
+  it('shows discovery failures while preserving manual entity creation', async () => {
+    const dom = await editorDom(null, undefined, { status: 401, message: 'Home Assistant rejected the configured credentials (401).' })
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#entity-picker-message')?.textContent).toContain('enter an entity ID manually'))
+
+    const entity = document.querySelector<HTMLInputElement>('#new-entity')
+    if (!entity) throw new Error('manual entity input missing')
+    entity.value = 'custom.unlisted_entity'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    expect(document.querySelector<HTMLElement>('.item[data-id="sensor"]')).not.toBeNull()
+  })
+
+  it('uses the editor settings token for entity discovery', async () => {
+    const dom = await editorDom(null, { entities: [] }, undefined, 'editor-token')
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+
+    await vi.waitFor(() => {
+      const discoveryCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
+      expect(discoveryCall?.[1]?.headers).toMatchObject({ Authorization: 'Bearer editor-token' })
+    })
+  })
+
   it('keeps schedule-name input focused as the non-replacing comparison path', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -139,7 +192,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = ''): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -148,16 +201,20 @@ async function editorDom(webhookUrl: string | null = null): Promise<JSDOM> {
       status: { lastAttemptAt: null, lastSuccessAt: null, nextRunAt: null, result: null, error: null }
     }] }],
     ['/api/schedules/default/config', layout],
-    ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }]
+    ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
+    ['/api/home-assistant/entities', discovery]
   ])
   const fetcher = vi.fn(async (input: string | URL | Request) => {
     const path = new URL(String(input), 'http://editor.local').pathname
+    if (path === '/api/home-assistant/entities' && discoveryError) {
+      return new Response(JSON.stringify({ message: discoveryError.message }), { status: discoveryError.status, headers: { 'Content-Type': 'application/json' } })
+    }
     const body = responses.get(path)
     return new Response(JSON.stringify(body), { status: body ? 200 : 404, headers: { 'Content-Type': 'application/json' } })
   })
   vi.stubGlobal('fetch', fetcher)
 
-  const dom = new JSDOM(renderEditorHtml(), {
+  const dom = new JSDOM(renderEditorHtml(bootstrapToken), {
     url: 'http://editor.local/editor',
     runScripts: 'dangerously',
     beforeParse(window) {

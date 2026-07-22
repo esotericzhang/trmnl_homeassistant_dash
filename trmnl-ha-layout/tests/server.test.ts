@@ -208,6 +208,60 @@ describe('settings + terminus auth routes', () => {
     expect(settings.terminus.password).toBeUndefined()
   })
 
+  it('discovers sanitized Home Assistant entities with the configured bearer token', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    let upstreamAuth = ''
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        upstreamAuth = String((init?.headers as Record<string, string>).Authorization)
+        return new Response(JSON.stringify([
+          { entity_id: 'light.porch', state: 'on', attributes: { friendly_name: 'Porch Light', sensitive_blob: 'do-not-return' } },
+          { entity_id: 'sensor.kitchen_temperature', state: '21.5', attributes: { friendly_name: 'Kitchen Temperature', unit_of_measurement: '°C', latitude: 12 } },
+          { entity_id: 'invalid', state: 'ignored', attributes: {} }
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.ok).toBe(true)
+    expect(upstreamAuth).toBe('Bearer ha-secret')
+    const body = await res.json() as { entities: unknown[] }
+    expect(body.entities).toEqual([
+      { entityId: 'light.porch', friendlyName: 'Porch Light', domain: 'light', state: 'on' },
+      { entityId: 'sensor.kitchen_temperature', friendlyName: 'Kitchen Temperature', domain: 'sensor', state: '21.5', unitOfMeasurement: '°C' }
+    ])
+    expect(JSON.stringify(body)).not.toContain('ha-secret')
+    expect(JSON.stringify(body)).not.toContain('sensitive_blob')
+    expect(JSON.stringify(body)).not.toContain('latitude')
+  })
+
+  it('returns clear non-secret Home Assistant discovery errors', async () => {
+    let res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain('credentials are not configured')
+
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        return new Response('Bearer ha-secret upstream private body', { status: 401 })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+    res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(401)
+    const text = await res.text()
+    expect(text).toContain('rejected the configured credentials (401)')
+    expect(text).not.toContain('ha-secret')
+    expect(text).not.toContain('upstream private body')
+  })
+
+  it('requires settings authentication for Home Assistant discovery', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret', settingsToken: 'guard-token' })
+    const unauthorized = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(unauthorized.status).toBe(401)
+  })
+
   it('PUT /api/settings round-trips and preserves unmasked tokens', async () => {
     const body: Partial<Settings> = {
       homeAssistantUrl: 'http://ha.local:8123',

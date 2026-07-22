@@ -70,6 +70,14 @@ export interface HassState {
   last_updated?: string
 }
 
+export interface HassEntitySummary {
+  entityId: string
+  friendlyName?: string
+  domain: string
+  state: string
+  unitOfMeasurement?: string
+}
+
 export type HassStateMap = Record<string, HassState>
 
 export interface RenderData {
