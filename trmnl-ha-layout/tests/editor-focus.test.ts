@@ -5,8 +5,12 @@ import type { LayoutConfig } from '../src/types.js'
 
 const layout: LayoutConfig = {
   frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
-  data: { entities: {} },
-  items: [{ id: 'title', type: 'text', x: 10, y: 10, width: 200, height: 30, text: 'A' }]
+  data: { entities: { temperature: 'sensor.temperature' } },
+  items: [
+    { id: 'title', type: 'text', x: 10, y: 10, width: 200, height: 30, text: 'A' },
+    { id: 'sensor-text', type: 'text', x: 10, y: 50, width: 200, height: 30, text: '{{ temperature }}' },
+    { id: 'temperature', type: 'metric', x: 240, y: 10, width: 180, height: 70, label: 'Temperature', value: '{{ temperature }}' }
+  ]
 }
 
 describe('editor focus continuity', () => {
@@ -27,6 +31,7 @@ describe('editor focus continuity', () => {
       expect(document.querySelector('textarea[name="text"]')).toBe(sameNode)
       expect(input.value).toBe(value)
       expect(document.querySelector<HTMLElement>('.item[data-id="title"] .item-preview')?.textContent).toBe(value)
+      expect(document.querySelectorAll('.item-mask')).toHaveLength(1)
     }
   })
 
@@ -46,6 +51,11 @@ describe('editor focus continuity', () => {
     expect(preview?.parentElement).toBe(item)
     expect(preview?.style.width).toBe('100%')
     expect(preview?.style.height).toBe('100%')
+    const mask = document.querySelector<HTMLElement>('.item-mask')
+    expect(mask?.style.left).toBe('10px')
+    expect(mask?.style.top).toBe('10px')
+    expect(mask?.style.width).toBe('200px')
+    expect(mask?.style.height).toBe('30px')
 
     const handle = item?.querySelector<HTMLElement>('.resize')
     if (!item || !handle) throw new Error('resize handle missing')
@@ -58,6 +68,45 @@ describe('editor focus continuity', () => {
     expect(preview?.parentElement).toBe(item)
     expect(preview?.style.width).toBe('100%')
     expect(preview?.style.height).toBe('100%')
+    expect(document.querySelector<HTMLElement>('.item-mask')?.style.width).toBe('200px')
+    expect(document.querySelector<HTMLElement>('.item-mask')?.style.height).toBe('30px')
+  })
+
+  it('keeps persisted sensor text and metrics in the authoritative server preview', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const sensorText = document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')
+    const metric = document.querySelector<HTMLElement>('.item[data-id="temperature"]')
+
+    expect(sensorText).not.toBeNull()
+    expect(sensorText?.querySelector('.item-preview')).toBeNull()
+    expect(metric).not.toBeNull()
+    expect(metric?.querySelector('.item-preview')).toBeNull()
+    expect(document.querySelector('.item-preview.metric')).toBeNull()
+  })
+
+  it('shows useful client previews for newly added text and sensor fields', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    const newText = document.querySelector<HTMLInputElement>('#new-text')
+    if (!newText) throw new Error('new text input missing')
+    newText.value = 'Draft note'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    expect(document.querySelector<HTMLElement>('.item[data-id="draft-note"] .item-preview')?.textContent).toBe('Draft note')
+
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    const label = document.querySelector<HTMLInputElement>('#new-label')
+    const entity = document.querySelector<HTMLInputElement>('#new-entity')
+    if (!label || !entity) throw new Error('new sensor inputs missing')
+    label.value = 'Humidity'
+    entity.value = 'sensor.humidity'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    const preview = document.querySelector<HTMLElement>('.item[data-id="humidity"] .item-preview.metric')
+    expect(preview?.textContent).toContain('Humidity')
+    expect(preview?.textContent).toContain('{{ humidity }}')
   })
 
   it('keeps schedule-name input focused as the non-replacing comparison path', async () => {
