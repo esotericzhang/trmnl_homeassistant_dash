@@ -26,7 +26,38 @@ describe('editor focus continuity', () => {
       expect(document.activeElement).toBe(sameNode)
       expect(document.querySelector('textarea[name="text"]')).toBe(sameNode)
       expect(input.value).toBe(value)
+      expect(document.querySelector<HTMLElement>('.item[data-id="title"] .item-preview')?.textContent).toBe(value)
     }
+  })
+
+  it('moves and resizes saved visible content with pointer interactions', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    let item = document.querySelector<HTMLElement>('.item[data-id="title"]')
+    let preview = item?.querySelector<HTMLElement>('.item-preview')
+    if (!item || !preview) throw new Error('saved item preview missing')
+
+    dispatchPointer(dom, item, 'pointerdown', 10, 10)
+    dispatchPointer(dom, document.querySelector<HTMLElement>('#stage')!, 'pointermove', 35, 45)
+    item = document.querySelector<HTMLElement>('.item[data-id="title"]')
+    preview = item?.querySelector<HTMLElement>('.item-preview')
+    expect(item?.style.left).toBe('35px')
+    expect(item?.style.top).toBe('45px')
+    expect(preview?.parentElement).toBe(item)
+    expect(preview?.style.width).toBe('100%')
+    expect(preview?.style.height).toBe('100%')
+
+    const handle = item?.querySelector<HTMLElement>('.resize')
+    if (!item || !handle) throw new Error('resize handle missing')
+    dispatchPointer(dom, handle, 'pointerdown', 35, 45)
+    dispatchPointer(dom, document.querySelector<HTMLElement>('#stage')!, 'pointermove', 75, 65)
+    item = document.querySelector<HTMLElement>('.item[data-id="title"]')
+    preview = item?.querySelector<HTMLElement>('.item-preview')
+    expect(item?.style.width).toBe('240px')
+    expect(item?.style.height).toBe('50px')
+    expect(preview?.parentElement).toBe(item)
+    expect(preview?.style.width).toBe('100%')
+    expect(preview?.style.height).toBe('100%')
   })
 
   it('keeps schedule-name input focused as the non-replacing comparison path', async () => {
@@ -85,10 +116,17 @@ async function editorDom(webhookUrl: string | null = null): Promise<JSDOM> {
       Object.defineProperty(window, 'confirm', { value: () => true })
       Object.defineProperty(window, 'prompt', { value: () => null })
       Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', { value: () => undefined })
+      Object.defineProperty(window.HTMLElement.prototype, 'setPointerCapture', { value: () => undefined })
       Object.defineProperty(window, 'requestAnimationFrame', { value: (cb: (frame?: number) => void) => { cb(); return 1 } })
     }
   })
 
   await vi.waitFor(() => expect(dom.window.document.querySelector('textarea[name="text"]')).not.toBeNull())
   return dom
+}
+
+function dispatchPointer(dom: JSDOM, target: HTMLElement, type: string, clientX: number, clientY: number): void {
+  const event = new dom.window.MouseEvent(type, { bubbles: true, clientX, clientY })
+  Object.defineProperty(event, 'pointerId', { value: 1 })
+  target.dispatchEvent(event)
 }
