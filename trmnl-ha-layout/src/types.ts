@@ -37,6 +37,8 @@ export interface MetricItem extends BaseItem {
   type: 'metric'
   label: string
   value: string
+  previewState?: string
+  previewUnit?: string
 }
 
 export interface ForecastItem extends BaseItem {

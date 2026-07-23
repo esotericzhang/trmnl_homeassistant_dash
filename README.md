@@ -24,7 +24,7 @@ npm run dev
 
 Open `http://localhost:10000/` to edit schedules and global connection settings, or use `http://localhost:10000/preview` for the default-schedule preview page.
 
-When adding a **Sensor value** field, the editor loads entities from the configured Home Assistant instance and lets you search by friendly name, entity ID, or domain. Results show the current state and unit when available. The entity ID remains a normal text input, so existing or uncommon IDs that discovery does not return can still be entered manually.
+When adding a **Sensor value** field, the editor loads entities from the configured Home Assistant instance and lets you search by friendly name, entity ID, or domain. Results show the current state and unit when available. Selecting a discovered entity saves that state and unit as an editor-only preview snapshot so the new metric is understandable on the canvas before and after saving; runtime renders still fetch live Home Assistant data. The entity ID remains a normal text input, so existing or uncommon IDs that discovery does not return can still be entered manually without adding a snapshot.
 
 ## Home Assistant add-on
 

@@ -136,6 +136,57 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLInputElement>('#new-source')?.value).toBe('kitchenTemperature')
   })
 
+  it('persists a discovered state and unit snapshot on the editor canvas', async () => {
+    const dom = await editorDom(null, {
+      entities: [{ entityId: 'sensor.kitchen_temperature', friendlyName: 'Kitchen Temperature', domain: 'sensor', state: '21.5', unitOfMeasurement: '°C' }]
+    })
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('.entity-option')?.click()
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+
+    let preview = document.querySelector<HTMLElement>('.item[data-id="kitchen-temperature"] .item-preview.metric')
+    expect(preview?.textContent).toContain('Kitchen Temperature')
+    expect(preview?.textContent).toContain('21.5 °C')
+    expect(preview?.textContent).not.toContain('{{ kitchenTemperature }}')
+
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    preview = document.querySelector<HTMLElement>('.item[data-id="kitchen-temperature"] .item-preview.metric')
+    expect(preview?.textContent).toContain('21.5 °C')
+    expect(document.querySelectorAll('.item-mask').length).toBeGreaterThan(0)
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'kitchen-temperature')).toMatchObject({
+      type: 'metric',
+      value: '{{ kitchenTemperature }}',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+  })
+
+  it('keeps manual sensor fields free of discovery preview snapshots', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    const entity = document.querySelector<HTMLInputElement>('#new-entity')
+    if (!entity) throw new Error('new entity input missing')
+    entity.value = 'sensor.manual'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+
+    expect(document.querySelector('.item[data-id="sensor"] .item-preview.metric')?.textContent).toContain('{{ sensor }}')
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    expect(document.querySelector('.item[data-id="sensor"] .item-preview.metric')).toBeNull()
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'sensor')).not.toHaveProperty('previewState')
+  })
+
   it('shows discovery failures while preserving manual entity creation', async () => {
     const dom = await editorDom(null, undefined, { status: 401, message: 'Home Assistant rejected the configured credentials (401).' })
     const document = dom.window.document
@@ -267,13 +318,17 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     ['/api/home-assistant/entities', discovery]
   ])
   let discoveryAttempts = 0
-  const fetcher = vi.fn(async (input: string | URL | Request) => {
+  const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
     const path = new URL(String(input), 'http://editor.local').pathname
     if (path === '/api/home-assistant/entities' && discoveryError && discoveryAttempts++ === 0) {
       return new Response(JSON.stringify({ message: discoveryError.message }), { status: discoveryError.status, headers: { 'Content-Type': 'application/json' } })
     }
     if (path === '/api/home-assistant/entities' && discoveryResponses.length) {
       const body = await discoveryResponses.shift()
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (path === '/api/schedules/default') {
+      const body = options?.body ? JSON.parse(String(options.body)) : {}
       return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     const body = responses.get(path)

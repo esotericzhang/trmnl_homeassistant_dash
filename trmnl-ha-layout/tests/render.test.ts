@@ -137,6 +137,21 @@ describe('renderer', () => {
     expect(svg).not.toContain('</text><script>')
   })
 
+  it('ignores editor preview snapshots during runtime metric rendering', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{
+        id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62,
+        label: 'Temperature', value: '{{ temperature }}', previewState: '21.5', previewUnit: '°C'
+      }]
+    }
+    const svg = renderSvg(config, { values: { temperature: '99' }, states: {} })
+
+    expect(svg).toContain('>99</text>')
+    expect(svg).not.toContain('21.5')
+  })
+
   it('escapes masked HA token placeholders in editor settings UI', () => {
     const html = renderEditorHtml()
     expect(html).toContain("escapeHtml(settings.haToken || 'set to replace')")
