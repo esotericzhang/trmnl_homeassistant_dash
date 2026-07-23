@@ -167,28 +167,25 @@ describe('editor focus continuity', () => {
     expect(calls).toHaveLength(2)
   })
 
-  it('invalidates cached discovery after saving global settings', async () => {
-    const dom = await editorDom(null, { entities: [{ entityId: 'sensor.current', domain: 'sensor', state: 'on' }] })
+  it('refreshes cached discovery when settings are saved with the picker open', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [
+      { entities: [{ entityId: 'sensor.stale', domain: 'sensor', state: 'off' }] },
+      { entities: [{ entityId: 'sensor.current', domain: 'sensor', state: 'on' }] }
+    ])
     const document = dom.window.document
     document.querySelector<HTMLButtonElement>('#add-field')?.click()
     document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
-    await vi.waitFor(() => expect(document.querySelector('.entity-option')).not.toBeNull())
-    document.querySelector<HTMLButtonElement>('#cancel-add')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.stale'))
 
     document.querySelector<HTMLButtonElement>('#global-settings')?.click()
     await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
     document.querySelector<HTMLButtonElement>('#save-settings')?.click()
     await vi.waitFor(() => expect(document.querySelector('#global-modal')?.classList.contains('show')).toBe(false))
-
-    document.querySelector<HTMLButtonElement>('#add-field')?.click()
-    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
-    await vi.waitFor(() => {
-      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
-      expect(calls).toHaveLength(2)
-    })
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
+    expect(document.querySelector('.entity-option')?.textContent).not.toContain('sensor.stale')
   })
 
-  it('ignores discovery responses started before saving global settings', async () => {
+  it('restarts in-flight discovery when settings are saved with the picker open', async () => {
     let resolveOldDiscovery: ((value: unknown) => void) | undefined
     const oldDiscovery = new Promise<unknown>(resolve => { resolveOldDiscovery = resolve })
     const dom = await editorDom(null, undefined, undefined, '', [
@@ -202,15 +199,12 @@ describe('editor focus continuity', () => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
       expect(calls).toHaveLength(1)
     })
-    document.querySelector<HTMLButtonElement>('#cancel-add')?.click()
 
     document.querySelector<HTMLButtonElement>('#global-settings')?.click()
     await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
     document.querySelector<HTMLButtonElement>('#save-settings')?.click()
     await vi.waitFor(() => expect(document.querySelector('#global-modal')?.classList.contains('show')).toBe(false))
 
-    document.querySelector<HTMLButtonElement>('#add-field')?.click()
-    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
     await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
 
     resolveOldDiscovery?.({ entities: [{ entityId: 'sensor.stale', domain: 'sensor', state: 'off' }] })
