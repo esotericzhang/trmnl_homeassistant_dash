@@ -188,6 +188,36 @@ describe('editor focus continuity', () => {
     })
   })
 
+  it('ignores discovery responses started before saving global settings', async () => {
+    let resolveOldDiscovery: ((value: unknown) => void) | undefined
+    const oldDiscovery = new Promise<unknown>(resolve => { resolveOldDiscovery = resolve })
+    const dom = await editorDom(null, undefined, undefined, '', [
+      oldDiscovery,
+      { entities: [{ entityId: 'sensor.current', domain: 'sensor', state: 'on' }] }
+    ])
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
+      expect(calls).toHaveLength(1)
+    })
+    document.querySelector<HTMLButtonElement>('#cancel-add')?.click()
+
+    document.querySelector<HTMLButtonElement>('#global-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('#save-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#global-modal')?.classList.contains('show')).toBe(false))
+
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
+
+    resolveOldDiscovery?.({ entities: [{ entityId: 'sensor.stale', domain: 'sensor', state: 'off' }] })
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
+    expect(document.querySelector('.entity-option')?.textContent).not.toContain('sensor.stale')
+  })
+
   it('uses the editor settings token for entity discovery', async () => {
     const dom = await editorDom(null, { entities: [] }, undefined, 'editor-token')
     const document = dom.window.document
@@ -230,7 +260,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = ''): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = []): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -247,6 +277,10 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     const path = new URL(String(input), 'http://editor.local').pathname
     if (path === '/api/home-assistant/entities' && discoveryError && discoveryAttempts++ === 0) {
       return new Response(JSON.stringify({ message: discoveryError.message }), { status: discoveryError.status, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (path === '/api/home-assistant/entities' && discoveryResponses.length) {
+      const body = await discoveryResponses.shift()
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     const body = responses.get(path)
     return new Response(JSON.stringify(body), { status: body ? 200 : 404, headers: { 'Content-Type': 'application/json' } })
