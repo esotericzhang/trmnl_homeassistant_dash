@@ -187,6 +187,28 @@ describe('editor focus continuity', () => {
     expect(body.config.items.find(item => item.id === 'sensor')).not.toHaveProperty('previewState')
   })
 
+  it('clears a saved preview snapshot when its value template changes', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { previewState: '21.5', previewUnit: '°C' })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')
+    if (!value) throw new Error('metric value input missing')
+    value.value = '{{ humidity }}'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    expect(document.querySelector('.item[data-id="temperature"] .item-preview.metric')).toBeNull()
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    const metric = body.config.items.find(item => item.id === 'temperature')
+    expect(metric).toMatchObject({ value: '{{ humidity }}' })
+    expect(metric).not.toHaveProperty('previewState')
+    expect(metric).not.toHaveProperty('previewUnit')
+  })
+
   it('shows discovery failures while preserving manual entity creation', async () => {
     const dom = await editorDom(null, undefined, { status: 401, message: 'Home Assistant rejected the configured credentials (401).' })
     const document = dom.window.document
@@ -234,6 +256,32 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('#global-modal')?.classList.contains('show')).toBe(false))
     await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
     expect(document.querySelector('.entity-option')?.textContent).not.toContain('sensor.stale')
+  })
+
+  it('clears a pending entity snapshot when settings are saved', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [
+      { entities: [{ entityId: 'sensor.stale', friendlyName: 'Stale', domain: 'sensor', state: 'off' }] },
+      { entities: [{ entityId: 'sensor.current', friendlyName: 'Current', domain: 'sensor', state: 'on' }] }
+    ])
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('Stale'))
+    document.querySelector<HTMLButtonElement>('.entity-option')?.click()
+
+    document.querySelector<HTMLButtonElement>('#global-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('#save-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('Current'))
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    const metric = body.config.items.find(item => item.id === 'stale')
+    expect(metric).not.toHaveProperty('previewState')
+    expect(metric).not.toHaveProperty('previewUnit')
   })
 
   it('restarts in-flight discovery when settings are saved with the picker open', async () => {
@@ -305,7 +353,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = []): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -313,7 +361,7 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
       destination: { deviceId: null, playlistId: null, mode: webhookUrl ? 'raw-webhook' : null, screenId: null, webhookUrl, modelId: null, screenName: null, screenLabel: null },
       status: { lastAttemptAt: null, lastSuccessAt: null, nextRunAt: null, result: null, error: null }
     }] }],
-    ['/api/schedules/default/config', layout],
+    ['/api/schedules/default/config', initialLayout],
     ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
     ['/api/home-assistant/entities', discovery]
   ])

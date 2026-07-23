@@ -3,6 +3,7 @@ import type { Server } from 'node:http'
 import type { Settings } from '../src/config.js'
 import { loadSettings, saveSettings } from '../src/config.js'
 import { app, terminusOptionsForSchedule } from '../src/server.js'
+import { loadScheduleLayout, loadSchedulesIndex, saveScheduleLayout } from '../src/schedules.js'
 import type { Schedule } from '../src/schedules.js'
 
 describe('server routes', () => {
@@ -284,6 +285,32 @@ describe('settings + terminus auth routes', () => {
     saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret', settingsToken: 'guard-token' })
     const unauthorized = await fetch(`${baseUrl}/api/home-assistant/entities`)
     expect(unauthorized.status).toBe(401)
+  })
+
+  it('requires settings authentication for config reads containing preview snapshots', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    const original = loadScheduleLayout(scheduleId)
+    const snapshot = structuredClone(original)
+    snapshot.items.push({
+      id: 'private-preview', type: 'metric', x: 0, y: 0, width: 100, height: 60,
+      label: 'Private', value: '{{ private }}', previewState: 'locked', previewUnit: 'secret'
+    })
+    saveScheduleLayout(scheduleId, snapshot)
+    saveSettings({ ...loadSettings(), settingsToken: 'guard-token' })
+
+    try {
+      for (const path of [`/api/schedules/${scheduleId}/config`, '/api/config']) {
+        const unauthorized = await fetch(`${baseUrl}${path}`)
+        expect(unauthorized.status).toBe(401)
+        expect(await unauthorized.text()).not.toContain('locked')
+
+        const authorized = await fetch(`${baseUrl}${path}`, { headers: { Authorization: 'Bearer guard-token' } })
+        expect(authorized.ok).toBe(true)
+        expect(await authorized.text()).toContain('locked')
+      }
+    } finally {
+      saveScheduleLayout(scheduleId, original)
+    }
   })
 
   it('PUT /api/settings round-trips and preserves unmasked tokens', async () => {

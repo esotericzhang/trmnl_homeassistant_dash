@@ -184,6 +184,16 @@ function scheduleForApi(schedule: Schedule): Schedule {
   }
 }
 
+function hasPreviewSnapshots(layout: ReturnType<typeof loadLayoutConfig>): boolean {
+  return layout.items.some(item => item.type === 'metric'
+    && (typeof item.previewState === 'string' || typeof item.previewUnit === 'string'))
+}
+
+function sendLayoutConfig(req: express.Request, res: express.Response, layout: ReturnType<typeof loadLayoutConfig>): void {
+  if (hasPreviewSnapshots(layout) && !requireMutationAuth(req, res)) return
+  res.json(layout)
+}
+
 app.get('/api/schedules', (_req, res, next) => {
   try { res.json({ defaultScheduleId: defaultScheduleId(), schedules: listSchedules().map(scheduleForApi) }) } catch (error) { next(error) }
 })
@@ -223,7 +233,7 @@ app.post('/api/schedules/:id/duplicate', (req, res, next) => {
 })
 
 app.get('/api/schedules/:id/config', (req, res, next) => {
-  try { res.json(loadScheduleLayout(req.params.id)) } catch (error) { handleScheduleError(error, res, next) }
+  try { sendLayoutConfig(req, res, loadScheduleLayout(req.params.id)) } catch (error) { handleScheduleError(error, res, next) }
 })
 
 app.put('/api/schedules/:id/config', (req, res, next) => {
@@ -262,8 +272,8 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', lastRefresh, lastPush })
 })
 
-app.get('/api/config', (_req, res, next) => {
-  try { res.json(loadScheduleLayout(defaultScheduleId())) } catch (error) { next(error) }
+app.get('/api/config', (req, res, next) => {
+  try { sendLayoutConfig(req, res, loadScheduleLayout(defaultScheduleId())) } catch (error) { next(error) }
 })
 
 app.put('/api/config', (req, res, next) => {
