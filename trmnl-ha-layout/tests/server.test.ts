@@ -256,6 +256,30 @@ describe('settings + terminus auth routes', () => {
     expect(text).not.toContain('upstream private body')
   })
 
+  it('returns safe errors for malformed and timed-out discovery responses', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') return new Response(JSON.stringify({ states: [] }), { status: 200 })
+      return originalFetch(url, init)
+    }) as typeof fetch
+    let res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(502)
+    expect(await res.text()).toContain('invalid entity response')
+
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        throw new DOMException('timed out', 'TimeoutError')
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+    res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(504)
+    const text = await res.text()
+    expect(text).toContain('discovery timed out')
+    expect(text).not.toContain('ha-secret')
+  })
+
   it('requires settings authentication for Home Assistant discovery', async () => {
     saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret', settingsToken: 'guard-token' })
     const unauthorized = await fetch(`${baseUrl}/api/home-assistant/entities`)

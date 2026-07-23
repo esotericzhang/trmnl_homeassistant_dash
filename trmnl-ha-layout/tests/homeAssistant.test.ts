@@ -37,4 +37,14 @@ describe('HomeAssistantClient', () => {
     await expect(new HomeAssistantClient('http://ha.local:8123', '', fetcher).getStates())
       .rejects.toThrow('Missing Home Assistant token')
   })
+
+  it('rejects malformed states responses distinctly', async () => {
+    const nonArrayFetcher = (async () => new Response(JSON.stringify({ states: [] }), { status: 200 })) as typeof fetch
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', nonArrayFetcher).getStates())
+      .rejects.toThrow('invalid states response')
+
+    const invalidJsonFetcher = (async () => new Response('{broken', { status: 200 })) as typeof fetch
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', invalidJsonFetcher).getStates())
+      .rejects.toThrow('invalid states response')
+  })
 })

@@ -21,7 +21,14 @@ export class HomeAssistantClient {
       signal
     })
     if (!response.ok) throw new HomeAssistantRequestError(response.status)
-    return response.json() as Promise<HassState[]>
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch {
+      throw new HomeAssistantResponseError()
+    }
+    if (!Array.isArray(payload)) throw new HomeAssistantResponseError()
+    return payload as HassState[]
   }
 
   async collect(config: LayoutConfig, signal?: AbortSignal): Promise<RenderData> {
@@ -37,6 +44,12 @@ export class HomeAssistantClient {
 export class HomeAssistantRequestError extends Error {
   constructor(readonly status: number) {
     super(`Home Assistant request failed: ${status}`)
+  }
+}
+
+export class HomeAssistantResponseError extends Error {
+  constructor() {
+    super('Home Assistant returned an invalid states response')
   }
 }
 

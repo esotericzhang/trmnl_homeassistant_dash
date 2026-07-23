@@ -65,7 +65,7 @@ Then open `http://localhost:10000/editor` to edit schedules and save global conn
 
 Use a Home Assistant URL reachable from inside the container. A LAN IP, such as `http://192.168.1.50:8123`, is usually more reliable than `homeassistant.local` or `localhost` in Docker.
 
-The image runs with `NODE_ENV=production`, so mutating endpoints are blocked unless you choose one auth mode:
+The image runs with `NODE_ENV=production`, so mutating endpoints and Home Assistant entity discovery are blocked unless you choose one auth mode:
 
 - Trusted LAN/dev use: set `ALLOW_NO_AUTH="1"` as shown above.
 - Token-protected use: remove `ALLOW_NO_AUTH`, set `SETTINGS_TOKEN="replace_with_editor_token"`, and open `http://localhost:10000/editor?token=replace_with_editor_token` once so the browser stores the token.
@@ -78,7 +78,7 @@ Terminus settings can usually be saved in the editor instead of Compose. Use env
 - `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook` for the default schedule.
 - `ADDON_BASE_URL`: Required only for `byos-uri`; this is the URL Terminus can use to fetch this dashboard's `/screen.png`.
 - `REFRESH_INTERVAL_SECONDS`: Optional interval used to seed the default schedule during first-run migration.
-- `SETTINGS_TOKEN`: Optional bearer token for all mutating schedule, layout, settings, refresh, and Terminus auth requests; open `/editor?token=<token>` once so the browser stores it.
+- `SETTINGS_TOKEN`: Optional bearer token for all mutating schedule, layout, settings, refresh, and Terminus auth requests, plus Home Assistant entity discovery; open `/editor?token=<token>` once so the browser stores it.
 
 Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
 
@@ -102,7 +102,7 @@ Schedules are stored in `schedules/index.json`, with each layout at `schedules/<
 
 Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Pushes re-read shared connection and Terminus settings. Schedule timing changes are reloaded by the coordinator without a restart; legacy `refresh_interval_seconds` applies only to the migrated default schedule.
 
-Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for schedule changes, layout saves, settings saves, refreshes, and Terminus auth actions. If no token is configured, mutations are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
+Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints and Home Assistant entity discovery. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for schedule changes, layout saves, settings saves, refreshes, Terminus auth actions, and entity discovery. If no token is configured, protected requests are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
 ## Important environment variables
 
@@ -118,7 +118,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `TERMINUS_SCREEN_ID`: Optional default-schedule fallback for duplicate-screen lookup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
 - `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint override for the default schedule's `raw-webhook` mode.
 - `REFRESH_INTERVAL_SECONDS`: Optional interval used to seed the default schedule during first-run migration; later schedule timing is edited per schedule.
-- `SETTINGS_TOKEN`: Optional bearer token required for all mutating schedule, layout, settings, refresh, and Terminus auth requests.
+- `SETTINGS_TOKEN`: Optional bearer token required for all mutating schedule, layout, settings, refresh, and Terminus auth requests, plus Home Assistant entity discovery.
 - `ALLOW_NO_AUTH`: Set to `1` to allow unauthenticated settings mutations without the development warning.
 
 `ADDON_BASE_URL` / `addon_base_url` take precedence over legacy `PUBLIC_BASE_URL` / `public_base_url`; existing legacy values continue to work when the new alias is unset.
@@ -131,7 +131,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `GET /screen.svg`: renders the persisted default schedule as SVG.
 - `GET /render`: wraps the persisted default schedule's SVG in HTML.
 - `GET /preview`: minimal default-schedule preview and refresh UI.
-- `GET /editor`: browser schedule, layout, and global connection settings editor for the 800x480 frame. Accepts `?token=<SETTINGS_TOKEN>` for mutating requests.
+- `GET /editor`: browser schedule, layout, and global connection settings editor for the 800x480 frame. Accepts `?token=<SETTINGS_TOKEN>` for protected requests, including entity discovery.
 - `POST /api/refresh`: fetches Home Assistant state and pushes the persisted default schedule.
 - `GET /api/config`: returns the persisted default schedule's layout configuration.
 - `PUT /api/config`: validates and saves the persisted default schedule's layout.

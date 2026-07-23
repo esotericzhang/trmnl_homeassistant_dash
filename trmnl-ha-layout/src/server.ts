@@ -15,7 +15,7 @@ import {
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
-import { HomeAssistantClient, HomeAssistantRequestError, sampleRenderData } from './homeAssistant.js'
+import { HomeAssistantClient, HomeAssistantRequestError, HomeAssistantResponseError, sampleRenderData } from './homeAssistant.js'
 import { renderEditorHtml, renderHtml, renderPng, renderSvg } from './render.js'
 import { createScheduleCoordinator } from './scheduler.js'
 import { legacyScheduleTerminusOverrides, TerminusClient, terminusOptionsFromEnv } from './terminus.js'
@@ -288,7 +288,7 @@ app.get('/api/home-assistant/entities', async (req, res) => {
     return
   }
   try {
-    const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates()
+    const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates(AbortSignal.timeout(10_000))
     const entities = states
       .filter(validHassState)
       .map(entitySummary)
@@ -305,6 +305,14 @@ app.get('/api/home-assistant/entities', async (req, res) => {
           ? `Home Assistant rejected the configured credentials (${error.status}).`
           : `Home Assistant entity discovery failed (${error.status}).`
       })
+      return
+    }
+    if (error instanceof HomeAssistantResponseError) {
+      res.status(502).json({ status: 'error', message: 'Home Assistant returned an invalid entity response.' })
+      return
+    }
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      res.status(504).json({ status: 'error', message: 'Home Assistant entity discovery timed out.' })
       return
     }
     res.status(502).json({ status: 'error', message: 'Could not connect to the configured Home Assistant instance.' })

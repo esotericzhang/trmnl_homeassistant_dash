@@ -150,6 +150,44 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLElement>('.item[data-id="sensor"]')).not.toBeNull()
   })
 
+  it('retries failed discovery and caches the successful result', async () => {
+    const dom = await editorDom(null, { entities: [{ entityId: 'sensor.retry', domain: 'sensor', state: 'ready' }] }, { status: 502, message: 'Temporary discovery failure.' })
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#retry-entity-discovery')).not.toBeNull())
+
+    document.querySelector<HTMLButtonElement>('#retry-entity-discovery')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.retry'))
+    document.querySelector<HTMLButtonElement>('#cancel-add')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
+    expect(calls).toHaveLength(2)
+  })
+
+  it('invalidates cached discovery after saving global settings', async () => {
+    const dom = await editorDom(null, { entities: [{ entityId: 'sensor.current', domain: 'sensor', state: 'on' }] })
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('#cancel-add')?.click()
+
+    document.querySelector<HTMLButtonElement>('#global-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('#save-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#global-modal')?.classList.contains('show')).toBe(false))
+
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
+      expect(calls).toHaveLength(2)
+    })
+  })
+
   it('uses the editor settings token for entity discovery', async () => {
     const dom = await editorDom(null, { entities: [] }, undefined, 'editor-token')
     const document = dom.window.document
@@ -204,9 +242,10 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
     ['/api/home-assistant/entities', discovery]
   ])
+  let discoveryAttempts = 0
   const fetcher = vi.fn(async (input: string | URL | Request) => {
     const path = new URL(String(input), 'http://editor.local').pathname
-    if (path === '/api/home-assistant/entities' && discoveryError) {
+    if (path === '/api/home-assistant/entities' && discoveryError && discoveryAttempts++ === 0) {
       return new Response(JSON.stringify({ message: discoveryError.message }), { status: discoveryError.status, headers: { 'Content-Type': 'application/json' } })
     }
     const body = responses.get(path)
