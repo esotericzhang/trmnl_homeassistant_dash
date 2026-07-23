@@ -10,7 +10,7 @@ All commands run from `trmnl-ha-layout/`:
 
 - `npm run build` — TypeScript compile to `dist/` (entrypoint `dist/src/server.js`).
 - `npm run typecheck` — `tsc --noEmit` (authoritative type check; SourceKit is unreliable).
-- `npm test` — vitest run. 97 tests across 10 files.
+- `npm test` — run the Vitest suite.
 - `npm run lint` — eslint `. --ext .ts`. `vitest.config.ts` is ignored (not in tsconfig project).
 
 Tests share a vitest setup (`tests/setup.ts`) that redirects `LAYOUT_PATH` to a temp dir so `settings.json` bootstrap-on-first-read never pollutes the repo root. New tests that touch settings/env should follow the same pattern (pass explicit settings paths or set `LAYOUT_PATH` to a temp dir).
