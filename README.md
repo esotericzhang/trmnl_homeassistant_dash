@@ -78,7 +78,7 @@ Terminus settings can usually be saved in the editor instead of Compose. Use env
 - `TERMINUS_MODE`: `byos-uri` (default), `byos-base64`, `screen-content`, or `raw-webhook` for the default schedule.
 - `ADDON_BASE_URL`: Required only for `byos-uri`; this is the URL Terminus can use to fetch this dashboard's `/screen.png`.
 - `REFRESH_INTERVAL_SECONDS`: Optional interval used to seed the default schedule during first-run migration.
-- `SETTINGS_TOKEN`: Optional bearer token for all mutating schedule, layout, settings, refresh, and Terminus auth requests, plus Home Assistant entity discovery; open `/editor?token=<token>` once so the browser stores it.
+- `SETTINGS_TOKEN`: Optional bearer token for all mutating schedule, layout, settings, refresh, and Terminus auth requests, Home Assistant entity discovery, and layout reads containing private editor preview snapshots; open `/editor?token=<token>` once so the browser stores it.
 
 Environment variables have highest precedence, then Home Assistant add-on options, then `/data/settings.json`, then defaults.
 
@@ -102,7 +102,7 @@ Schedules are stored in `schedules/index.json`, with each layout at `schedules/<
 
 Configuration precedence is environment variables first, then Home Assistant add-on options from `/data/options.json`, then GUI-saved `settings.json`, then defaults. Pushes re-read shared connection and Terminus settings. Schedule timing changes are reloaded by the coordinator without a restart; legacy `refresh_interval_seconds` applies only to the migrated default schedule.
 
-Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints and Home Assistant entity discovery. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for schedule changes, layout saves, settings saves, refreshes, Terminus auth actions, and entity discovery. If no token is configured, protected requests are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
+Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating endpoints, Home Assistant entity discovery, and layout reads that contain editor preview snapshots. When a token is set, open `/editor?token=<token>` once; the editor stores it in session storage and sends `Authorization: Bearer <token>` for protected requests. If no token is configured, protected requests are allowed with a warning for development; set `ALLOW_NO_AUTH=1` only to silence that warning in local/dev use.
 
 ## Important environment variables
 
@@ -118,7 +118,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `TERMINUS_SCREEN_ID`: Optional default-schedule fallback for duplicate-screen lookup; normally runtime-derived on 422 conflicts, not user-configured in the editor.
 - `TERMINUS_WEBHOOK_URL`: Generic webhook endpoint override for the default schedule's `raw-webhook` mode.
 - `REFRESH_INTERVAL_SECONDS`: Optional interval used to seed the default schedule during first-run migration; later schedule timing is edited per schedule.
-- `SETTINGS_TOKEN`: Optional bearer token required for all mutating schedule, layout, settings, refresh, and Terminus auth requests, plus Home Assistant entity discovery.
+- `SETTINGS_TOKEN`: Optional bearer token required for all mutating schedule, layout, settings, refresh, and Terminus auth requests, Home Assistant entity discovery, and layout reads containing private editor preview snapshots.
 - `ALLOW_NO_AUTH`: Set to `1` to allow unauthenticated settings mutations without the development warning.
 
 `ADDON_BASE_URL` / `addon_base_url` take precedence over legacy `PUBLIC_BASE_URL` / `public_base_url`; existing legacy values continue to work when the new alias is unset.
@@ -133,7 +133,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `GET /preview`: minimal default-schedule preview and refresh UI.
 - `GET /editor`: browser schedule, layout, and global connection settings editor for the 800x480 frame. Accepts `?token=<SETTINGS_TOKEN>` for protected requests, including entity discovery.
 - `POST /api/refresh`: fetches Home Assistant state and pushes the persisted default schedule.
-- `GET /api/config`: returns the persisted default schedule's layout configuration.
+- `GET /api/config`: returns the persisted default schedule's layout configuration. Requires the settings bearer token when the layout contains editor preview snapshots.
 - `PUT /api/config`: validates and saves the persisted default schedule's layout.
 - `GET /api/schedules`: lists schedules and the legacy default schedule ID.
 - `POST /api/schedules`: creates a disabled blank schedule.
@@ -141,7 +141,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `PATCH /api/schedules/:id`: updates schedule identity, enabled state, timing, or destination; status is server-owned.
 - `DELETE /api/schedules/:id`: deletes only the local schedule and layout when at least one other schedule remains.
 - `POST /api/schedules/:id/duplicate`: duplicates a schedule as a disabled copy with cleared remote status.
-- `GET /api/schedules/:id/config` and `PUT /api/schedules/:id/config`: load or save one schedule's layout.
+- `GET /api/schedules/:id/config` and `PUT /api/schedules/:id/config`: load or save one schedule's layout. The `GET` requires the settings bearer token when the layout contains editor preview snapshots.
 - `PUT /api/schedules/:id`: validates and saves one schedule and its layout together.
 - `POST /api/schedules/:id/push`: renders and pushes one schedule immediately, even when it is disabled.
 - `GET /schedules/:id/screen.png`, `/screen.svg`, `/render`: stable schedule-specific output routes.
@@ -152,4 +152,4 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 - `POST /api/terminus/refresh`: refreshes stored Terminus JWT tokens.
 - `DELETE /api/terminus/tokens`: clears stored Terminus JWT tokens.
 
-All mutating `/api/schedules*`, `/api/config`, `/api/refresh`, `/api/settings`, and `/api/terminus/*` endpoints require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured. Entity discovery at `GET /api/home-assistant/entities` uses the same protection because entity names and states may be private; the editor sends its stored settings token automatically.
+All mutating `/api/schedules*`, `/api/config`, `/api/refresh`, `/api/settings`, and `/api/terminus/*` endpoints require `Authorization: Bearer <SETTINGS_TOKEN>` when a settings token is configured. Entity discovery at `GET /api/home-assistant/entities` uses the same protection because entity names and states may be private. `GET /api/config` and `GET /api/schedules/:id/config` also require it when the returned layout contains editor preview snapshots, because those snapshots contain Home Assistant state. The editor sends its stored settings token automatically. Without a configured token, the existing development and `ALLOW_NO_AUTH=1` behavior still applies.
