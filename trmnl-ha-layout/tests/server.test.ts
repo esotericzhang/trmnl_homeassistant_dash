@@ -119,6 +119,20 @@ describe('server routes', () => {
     expect(response.status).toBe(404)
   })
 
+  it('renders an unsaved schedule preview without persisting it', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const saved = loadScheduleLayout(list.defaultScheduleId)
+    const draft = structuredClone(saved)
+    draft.items = draft.items.filter(item => item.id !== draft.items[0]?.id)
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft)
+    })
+    expect(response.headers.get('content-type')).toContain('image/svg+xml')
+    expect(loadScheduleLayout(list.defaultScheduleId).items).toHaveLength(saved.items.length)
+  })
+
   it('masks schedule webhook URLs and rejects client-owned status updates', async () => {
     const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
     await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`, {

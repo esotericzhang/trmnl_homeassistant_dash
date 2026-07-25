@@ -30,7 +30,7 @@ describe('renderer', () => {
     expect(forecast!.y + forecast!.rowPaddingY!).toBeGreaterThan(104)
 
     const svg = renderSvg(config, sampleRenderData(config))
-    expect(svg).toContain('<clipPath id="clip-forecast">')
+    expect(svg).toMatch(/<clipPath id="layout-clip-\d+">/)
     expect(svg).toContain('<rect x="0" y="0" width="744" height="342" />')
     expect(svg).toContain('translate(0,294)')
   })
@@ -63,7 +63,7 @@ describe('renderer', () => {
     expect(svg).toContain('font-size="31" font-weight="900"')
     expect(svg).toContain('font-size="30" font-weight="900" fill="#222"')
     expect(svg).toContain('x2="744" y2="41" stroke="#111"')
-    expect(svg).toContain('clip-path="url(#clip-forecast)"')
+    expect(svg).toMatch(/clip-path="url\(#layout-clip-\d+\)"/)
   })
 
   it('clips forecast rows and truncates long conditions inside item bounds', () => {
@@ -108,7 +108,7 @@ describe('renderer', () => {
     const svg = renderSvg(config, data)
     expect(svg).toContain('15%')
     expect(svg).toContain('excep…')
-    expect(svg).toContain('clip-path="url(#clip-forecast-test)"')
+    expect(svg).toContain('clip-path="url(#layout-clip-0)"')
     expect(svg).not.toContain('translate(0,68)')
   })
 
@@ -192,8 +192,8 @@ describe('renderer', () => {
       items: [{ id: 'narrow', type: 'metric', x: 10, y: 20, width: 40, height: 25, label: 'Long label', value: '{{ state }}' }]
     }
     const svg = renderSvg(config, { values: { state: 'Long runtime value outside bounds' }, states: {} })
-    expect(svg).toContain('<clipPath id="clip-metric-narrow"><rect x="0" y="0" width="40" height="25" /></clipPath>')
-    expect(svg).toContain('<g clip-path="url(#clip-metric-narrow)">')
+    expect(svg).toContain('<clipPath id="layout-clip-0"><rect x="0" y="0" width="40" height="25" /></clipPath>')
+    expect(svg).toContain('<g clip-path="url(#layout-clip-0)">')
   })
 
   it('clips runtime text to the configured item bounds', () => {
@@ -204,8 +204,24 @@ describe('renderer', () => {
     }
     const svg = renderSvg(config, { values: {}, states: {} })
 
-    expect(svg).toContain('<clipPath id="clip-long-text"><rect x="10" y="20" width="40" height="25" /></clipPath>')
-    expect(svg).toContain('clip-path="url(#clip-long-text)"')
+    expect(svg).toContain('<clipPath id="layout-clip-0"><rect x="10" y="20" width="40" height="25" /></clipPath>')
+    expect(svg).toContain('clip-path="url(#layout-clip-0)"')
+  })
+
+  it('uses collision-free clip IDs for arbitrary cross-type item IDs', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { value: 'sensor.value' } },
+      items: [
+        { id: 'metric-temperature', type: 'text', x: 0, y: 0, width: 100, height: 30, text: 'Text' },
+        { id: 'temperature )', type: 'metric', x: 0, y: 40, width: 100, height: 60, label: 'Metric', value: '{{ value }}' }
+      ]
+    }
+    const svg = renderSvg(config, { values: { value: 'long value' }, states: {} })
+    expect(svg).toContain('id="layout-clip-0"')
+    expect(svg).toContain('id="layout-clip-1"')
+    expect(svg.match(/id="layout-clip-/g)).toHaveLength(2)
+    expect(svg).not.toContain('url(#clip-')
   })
 
   it('escapes masked HA token placeholders in editor settings UI', () => {

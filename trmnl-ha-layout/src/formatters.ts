@@ -1,6 +1,7 @@
 export function formatValue(value: unknown, filter?: string): string {
+  if (value === null || value === undefined) return '—'
   if (filter?.trim() === 'raw') return String(value)
-  if (value === null || value === undefined || value === 'unknown' || value === 'unavailable') return '—'
+  if (value === 'unknown' || value === 'unavailable') return '—'
   switch (filter?.trim()) {
     case 'time':
       return formatTime(value)

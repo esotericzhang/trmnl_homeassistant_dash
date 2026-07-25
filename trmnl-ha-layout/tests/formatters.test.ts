@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMinutes, interpolate } from '../src/formatters.js'
+import { formatMinutes, formatValue, interpolate } from '../src/formatters.js'
 
 describe('formatters', () => {
   it('formats minutes as hours and minutes', () => {
@@ -21,6 +21,8 @@ describe('formatters', () => {
     expect(interpolate('{{ state }}', { state: 'unknown' }, 'raw')).toBe('unknown')
     expect(interpolate('{{ state }}', { state: 'unknown' })).toBe('—')
     expect(interpolate('{{ state | minutes }}', { state: '125' }, 'raw')).toBe('2h 5m')
+    expect(formatValue(null, 'raw')).toBe('—')
+    expect(formatValue(undefined, 'raw')).toBe('—')
   })
 
   it('escapes literal text while preserving placeholders', () => {

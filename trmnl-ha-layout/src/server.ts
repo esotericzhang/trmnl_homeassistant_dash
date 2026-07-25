@@ -235,6 +235,15 @@ app.get('/api/schedules/:id/config', (req, res, next) => {
   try { sendLayoutConfig(req, res, loadScheduleLayout(req.params.id)) } catch (error) { handleScheduleError(error, res, next) }
 })
 
+app.post('/api/schedules/:id/preview', (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
+  try {
+    getSchedule(req.params.id)
+    validateLayoutConfig(req.body)
+    res.type('svg').send(renderSvg(req.body, sampleRenderData(req.body)))
+  } catch (error) { handleScheduleError(error, res, next) }
+})
+
 app.put('/api/schedules/:id/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleScheduleError(error, res, next) }

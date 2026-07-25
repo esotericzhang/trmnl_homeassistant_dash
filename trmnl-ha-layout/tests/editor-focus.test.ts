@@ -119,6 +119,35 @@ describe('editor focus continuity', () => {
     expect(mask).toBeDefined()
   })
 
+  it('preserves replacement masking across schedule switches', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    document.querySelector<HTMLInputElement>('#new-label')!.value = 'Title'
+    document.querySelector<HTMLInputElement>('#new-entity')!.value = 'sensor.manual'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')).toBe(true)
+  })
+
+  it('regenerates the unsaved preview after overlapping deletions', async () => {
+    const overlapping = structuredClone(layout)
+    overlapping.items[1].x = 20
+    overlapping.items[1].y = 20
+    const dom = await editorDom(null, undefined, undefined, '', [], overlapping)
+    dom.window.document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expect(dom.window.document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    const previewCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/preview')
+    const body = JSON.parse(String(previewCall?.[1]?.body)) as LayoutConfig
+    expect(body.items.find(item => item.id === 'title')).toBeUndefined()
+    expect(body.items.find(item => item.id === 'sensor-text')).toBeDefined()
+  })
+
   it('keeps persisted sensor text and metrics in the authoritative server preview', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -349,6 +378,8 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
     document.querySelector<HTMLButtonElement>('#save-settings')?.click()
     await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('Current'))
+    document.querySelector<HTMLInputElement>('#new-label')!.value = 'Stale'
+    document.querySelector<HTMLInputElement>('#new-entity')!.value = 'sensor.stale'
     document.querySelector<HTMLButtonElement>('#create-field')?.click()
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
@@ -358,6 +389,22 @@ describe('editor focus continuity', () => {
     const metric = body.config.items.find(item => item.id === 'stale')
     expect(metric).not.toHaveProperty('previewState')
     expect(metric).not.toHaveProperty('previewUnit')
+  })
+
+  it('clears only picker-derived inputs when settings are saved', async () => {
+    const dom = await editorDom(null, { entities: [{ entityId: 'sensor.stale', friendlyName: 'Stale', domain: 'sensor', state: 'off' }] })
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.entity-option')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('.entity-option')?.click()
+    document.querySelector<HTMLInputElement>('#new-label')!.value = 'Manual label'
+    document.querySelector<HTMLButtonElement>('#global-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('#save-settings')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLInputElement>('#new-entity')?.value).toBe(''))
+    expect(document.querySelector<HTMLInputElement>('#new-source')?.value).toBe('')
+    expect(document.querySelector<HTMLInputElement>('#new-label')?.value).toBe('Manual label')
   })
 
   it('restarts in-flight discovery when settings are saved with the picker open', async () => {
@@ -429,15 +476,16 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
       timing: { kind: 'manual' },
       destination: { deviceId: null, playlistId: null, mode: webhookUrl ? 'raw-webhook' : null, screenId: null, webhookUrl, modelId: null, screenName: null, screenLabel: null },
       status: { lastAttemptAt: null, lastSuccessAt: null, nextRunAt: null, result: null, error: null }
-    }] }],
+    }, ...(secondSchedule ? [{ id: 'second', name: 'Second', enabled: true, order: 1, timing: { kind: 'manual' }, destination: {}, status: {} }] : [])] }],
     ['/api/schedules/default/config', initialLayout],
+    ['/api/schedules/second/config', layout],
     ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
     ['/api/home-assistant/entities', discovery]
   ])
@@ -454,6 +502,10 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     if (path === '/api/schedules/default') {
       const body = options?.body ? JSON.parse(String(options.body)) : {}
       return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (path.endsWith('/preview')) {
+      if (secondSchedule) return new Response('preview unavailable', { status: 503 })
+      return new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>', { status: 200, headers: { 'Content-Type': 'image/svg+xml' } })
     }
     const body = responses.get(path)
     return new Response(JSON.stringify(body), { status: body ? 200 : 404, headers: { 'Content-Type': 'application/json' } })
