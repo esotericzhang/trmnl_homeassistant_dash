@@ -30,7 +30,7 @@ Global config precedence (highest first): `process.env` → `/data/options.json`
 
 ## Settings GUI auth
 
-`SETTINGS_TOKEN` env var (or `settings.settingsToken`) gates every mutating schedule, config, refresh, settings, and Terminus endpoint, plus read-only Home Assistant entity discovery because entity names/states may be private. If unset, protected routes are allowed with a logged warning (dev fallback). `ALLOW_NO_AUTH=1` silences the warning explicitly. The `/editor` page accepts `?token=` and stores it in `sessionStorage`; the client attaches `Authorization: Bearer <token>` to all fetches. Do not regress: `GET /api/settings` must never return full `haToken`, `terminus.login`, `terminus.password`, or raw JWTs, entity discovery must expose only its UI summary fields, and schedule API responses must mask webhook URLs.
+`SETTINGS_TOKEN` env var (or `settings.settingsToken`) gates every mutating schedule, config, refresh, settings, and Terminus endpoint, plus read-only Home Assistant entity discovery and layout reads containing editor preview snapshots because both may expose private state. If unset, protected routes are allowed with a logged warning (dev fallback). `ALLOW_NO_AUTH=1` silences the warning explicitly. The `/editor` page accepts `?token=` and stores it in `sessionStorage`; the client attaches `Authorization: Bearer <token>` to all fetches. Do not regress: `GET /api/settings` must never return full `haToken`, `terminus.login`, `terminus.password`, or raw JWTs, entity discovery must expose only its UI summary fields, and schedule API responses must mask webhook URLs.
 
 ## TerminusClient.login / refresh
 
