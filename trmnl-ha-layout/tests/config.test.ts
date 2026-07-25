@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadLayoutConfig, saveLayoutConfig } from '../src/config.js'
+import { loadLayoutConfig, saveLayoutConfig, validateLayoutConfig } from '../src/config.js'
+import type { LayoutConfig } from '../src/types.js'
 
 describe('layout config', () => {
   it('loads default layout with positioned items', () => {
@@ -28,5 +29,24 @@ describe('layout config', () => {
 
     expect(fs.readFileSync(layoutPath, 'utf8')).toContain('Edited title')
     expect(savedTitle).toMatchObject({ id: 'title', type: 'text', x: 42, text: 'Edited title' })
+  })
+
+  it('accepts string preview snapshots only on metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find((item) => item.type === 'metric')
+    if (!metric || metric.type !== 'metric') throw new Error('metric item missing')
+    metric.previewState = '21.5'
+    metric.previewUnit = '°C'
+
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+
+    const numericSnapshot = structuredClone(config) as unknown as LayoutConfig
+    Object.assign(numericSnapshot.items.find((item) => item.id === metric.id)!, { previewState: 21.5 })
+    expect(() => validateLayoutConfig(numericSnapshot)).toThrow('invalid previewState')
+
+    const textSnapshot = structuredClone(config) as unknown as LayoutConfig
+    const text = textSnapshot.items.find((item) => item.type === 'text')!
+    Object.assign(text, { previewUnit: 'private' })
+    expect(() => validateLayoutConfig(textSnapshot)).toThrow('may only use previewUnit when type is metric')
   })
 })

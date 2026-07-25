@@ -59,6 +59,12 @@ function validateItem(item: LayoutItem): void {
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
     throw new Error(`item ${item.id} has unsupported type ${item.type}`)
   }
+  const candidate = item as LayoutItem & Record<string, unknown>
+  for (const key of ['previewState', 'previewUnit'] as const) {
+    if (!(key in candidate)) continue
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use ${key} when type is metric`)
+    if (typeof candidate[key] !== 'string') throw new Error(`item ${item.id} has invalid ${key}`)
+  }
 }
 
 export function getRuntimeConfig() {

@@ -185,8 +185,7 @@ function scheduleForApi(schedule: Schedule): Schedule {
 }
 
 function hasPreviewSnapshots(layout: ReturnType<typeof loadLayoutConfig>): boolean {
-  return layout.items.some(item => item.type === 'metric'
-    && (typeof item.previewState === 'string' || typeof item.previewUnit === 'string'))
+  return layout.items.some(item => 'previewState' in item || 'previewUnit' in item)
 }
 
 function sendLayoutConfig(req: express.Request, res: express.Response, layout: ReturnType<typeof loadLayoutConfig>): void {
