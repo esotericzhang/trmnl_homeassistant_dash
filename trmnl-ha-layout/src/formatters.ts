@@ -33,12 +33,12 @@ export function formatMinutes(value: unknown): string {
   return `${hours}h ${mins}m`
 }
 
-export function interpolate(template: string, values: Record<string, unknown>): string {
+export function interpolate(template: string, values: Record<string, unknown>, filterOverride?: string): string {
   let result = ''
   let lastIndex = 0
   for (const match of template.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g)) {
     result += escapeXml(template.slice(lastIndex, match.index))
-    result += escapeXml(formatValue(values[match[1]], match[2]))
+    result += escapeXml(formatValue(values[match[1]], filterOverride ?? match[2]))
     lastIndex = match.index + match[0].length
   }
   return result + escapeXml(template.slice(lastIndex))

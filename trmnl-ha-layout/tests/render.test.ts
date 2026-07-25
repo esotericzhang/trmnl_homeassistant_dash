@@ -152,6 +152,32 @@ describe('renderer', () => {
     expect(svg).not.toContain('21.5')
   })
 
+  it('applies named metric duration formatting to runtime values', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { minutes: 'sensor.minutes' } },
+      items: [{ id: 'duration', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Duration', value: '{{ minutes }}', valueFormat: 'duration-minutes' }]
+    }
+
+    expect(renderSvg(config, { values: { minutes: '125' }, states: {} })).toContain('>2h 5m</text>')
+    const metric = config.items[0]
+    if (metric.type !== 'metric') throw new Error('expected metric')
+    metric.valueFormat = 'raw'
+    expect(renderSvg(config, { values: { minutes: '125' }, states: {} })).toContain('>125</text>')
+  })
+
+  it('clips runtime text to the configured item bounds', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'long-text', type: 'text', x: 10, y: 20, width: 40, height: 25, text: 'Long text outside bounds' }]
+    }
+    const svg = renderSvg(config, { values: {}, states: {} })
+
+    expect(svg).toContain('<clipPath id="clip-long-text"><rect x="10" y="20" width="40" height="25" /></clipPath>')
+    expect(svg).toContain('clip-path="url(#clip-long-text)"')
+  })
+
   it('escapes masked HA token placeholders in editor settings UI', () => {
     const html = renderEditorHtml()
     expect(html).toContain("escapeHtml(settings.haToken || 'set to replace')")

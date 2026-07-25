@@ -72,6 +72,34 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLElement>('.item-mask')?.style.height).toBe('30px')
   })
 
+  it('masks persisted canvas content immediately when its field is deleted', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+
+    expect(document.querySelector('.item[data-id="title"]')).toBeNull()
+    const mask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '10px' && element.style.top === '10px')
+    expect(mask?.style.width).toBe('200px')
+    expect(mask?.style.height).toBe('30px')
+  })
+
+  it('masks old text when a deleted persisted ID is reused before save', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    const text = document.querySelector<HTMLInputElement>('#new-text')
+    if (!text) throw new Error('new text input missing')
+    text.value = 'Title'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+
+    expect(document.querySelector('.item[data-id="title"] .item-preview')?.textContent).toBe('Title')
+    const mask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '10px' && element.style.top === '10px')
+    expect(mask).toBeDefined()
+  })
+
   it('keeps persisted sensor text and metrics in the authoritative server preview', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -166,6 +194,21 @@ describe('editor focus continuity', () => {
       previewState: '21.5',
       previewUnit: '°C'
     })
+  })
+
+  it('formats metric preview snapshots with the named duration option', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { previewState: '125', valueFormat: 'duration-minutes' })
+    const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+
+    expect(document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m')
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const format = document.querySelector<HTMLSelectElement>('select[name="valueFormat"]')
+    if (!format) throw new Error('metric value format missing')
+    format.value = 'raw'
+    format.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    expect(document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125')
   })
 
   it('keeps manual sensor fields free of discovery preview snapshots', async () => {

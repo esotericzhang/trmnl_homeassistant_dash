@@ -49,4 +49,13 @@ describe('layout config', () => {
     Object.assign(text, { previewUnit: 'private' })
     expect(() => validateLayoutConfig(textSnapshot)).toThrow('may only use previewUnit when type is metric')
   })
+
+  it('rejects unknown metric value formats while preserving layouts without one', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+    const metric = config.items.find(item => item.type === 'metric')
+    if (!metric || metric.type !== 'metric') throw new Error('expected metric')
+    Object.assign(metric, { valueFormat: 'surprising' })
+    expect(() => validateLayoutConfig(config)).toThrow('invalid valueFormat')
+  })
 })

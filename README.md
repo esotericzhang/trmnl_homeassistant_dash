@@ -26,6 +26,8 @@ Open `http://localhost:10000/` to edit schedules and global connection settings,
 
 When adding a **Sensor value** field, the editor loads entities from the configured Home Assistant instance and lets you search by friendly name, entity ID, or domain. Results show the current state and unit when available. Selecting a discovered entity saves that state and unit as an editor-only preview snapshot so the new metric is understandable on the canvas before and after saving; runtime renders still fetch live Home Assistant data. The entity ID remains a normal text input, so existing or uncommon IDs that discovery does not return can still be entered manually without adding a snapshot.
 
+Metric fields support a named **Value format** setting. **Raw** preserves the Home Assistant value as-is. **Duration (minutes to hours/minutes)** converts a numeric minute value such as `125` to `2h 5m` in both editor snapshots and runtime renders. Existing inline template filters remain supported.
+
 ## Home Assistant add-on
 
 Add this repository to Home Assistant, install **TRMNL HA Layout**, and configure the add-on options or editor connection settings. On a new install, create and edit layouts through the editor. On upgrade, an existing `/data/layout.yaml` is imported once into the default schedule; active layouts then live under `/data/schedules/<schedule-id>/layout.yaml`.
