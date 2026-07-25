@@ -166,6 +166,36 @@ describe('renderer', () => {
     expect(renderSvg(config, { values: { minutes: '125' }, states: {} })).toContain('>125</text>')
   })
 
+  it('preserves inline filters and explicit raw state strings', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { duration: 'sensor.duration', startedAt: 'sensor.started_at' } },
+      items: [{ id: 'mixed', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Mixed', value: '{{ duration }} {{ startedAt | time }}', valueFormat: 'duration-minutes' }]
+    }
+    const durationSvg = renderSvg(config, { values: { duration: '125', startedAt: '2026-06-24T08:30:00Z' }, states: {} })
+    expect(durationSvg).toContain('2h 5m ')
+    expect(durationSvg).not.toContain('33774096h')
+
+    const metric = config.items[0]
+    if (metric.type !== 'metric') throw new Error('expected metric')
+    metric.value = '{{ duration }}'
+    metric.valueFormat = 'raw'
+    expect(renderSvg(config, { values: { duration: 'unknown' }, states: {} })).toContain('>unknown</text>')
+    delete metric.valueFormat
+    expect(renderSvg(config, { values: { duration: 'unknown' }, states: {} })).toContain('>—</text>')
+  })
+
+  it('clips runtime metric content to the configured item bounds', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { state: 'sensor.state' } },
+      items: [{ id: 'narrow', type: 'metric', x: 10, y: 20, width: 40, height: 25, label: 'Long label', value: '{{ state }}' }]
+    }
+    const svg = renderSvg(config, { values: { state: 'Long runtime value outside bounds' }, states: {} })
+    expect(svg).toContain('<clipPath id="clip-metric-narrow"><rect x="0" y="0" width="40" height="25" /></clipPath>')
+    expect(svg).toContain('<g clip-path="url(#clip-metric-narrow)">')
+  })
+
   it('clips runtime text to the configured item bounds', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

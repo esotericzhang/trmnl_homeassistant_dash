@@ -59,10 +59,13 @@ function validateItem(item: LayoutItem): void {
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
     throw new Error(`item ${item.id} has unsupported type ${item.type}`)
   }
-  if (item.type === 'metric' && item.valueFormat !== undefined && !['raw', 'duration-minutes'].includes(item.valueFormat)) {
-    throw new Error(`item ${item.id} has invalid valueFormat`)
-  }
   const candidate = item as LayoutItem & Record<string, unknown>
+  if ('valueFormat' in candidate) {
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use valueFormat when type is metric`)
+    if (!['raw', 'duration-minutes'].includes(String(candidate.valueFormat))) {
+      throw new Error(`item ${item.id} has invalid valueFormat`)
+    }
+  }
   for (const key of ['previewState', 'previewUnit'] as const) {
     if (!(key in candidate)) continue
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use ${key} when type is metric`)

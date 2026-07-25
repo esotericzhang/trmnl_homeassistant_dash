@@ -100,6 +100,25 @@ describe('editor focus continuity', () => {
     expect(mask).toBeDefined()
   })
 
+  it('masks old text when a deleted persisted ID is reused by a manual metric', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    const label = document.querySelector<HTMLInputElement>('#new-label')
+    const entity = document.querySelector<HTMLInputElement>('#new-entity')
+    if (!label || !entity) throw new Error('manual metric inputs missing')
+    label.value = 'Title'
+    entity.value = 'sensor.manual'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+
+    expect(document.querySelector('.item[data-id="title"] .item-preview.metric')?.textContent).toContain('{{ title }}')
+    const mask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '10px' && element.style.top === '10px')
+    expect(mask).toBeDefined()
+  })
+
   it('keeps persisted sensor text and metrics in the authoritative server preview', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -198,7 +217,7 @@ describe('editor focus continuity', () => {
 
   it('formats metric preview snapshots with the named duration option', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { previewState: '125', valueFormat: 'duration-minutes' })
+    Object.assign(snapshotLayout.items[2], { previewState: '125', previewUnit: 'min', valueFormat: 'duration-minutes' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     const document = dom.window.document
 
@@ -208,7 +227,21 @@ describe('editor focus continuity', () => {
     if (!format) throw new Error('metric value format missing')
     format.value = 'raw'
     format.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
-    expect(document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125')
+    expect(document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125 min')
+  })
+
+  it('honors inline preview filters and explicit raw state strings', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }}', previewState: '125', previewUnit: 'min', valueFormat: 'raw' })
+    let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m')
+
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }}', previewState: 'unknown', previewUnit: undefined, valueFormat: 'raw' })
+    dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('unknown')
+    delete (snapshotLayout.items[2] as { valueFormat?: string }).valueFormat
+    dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('—')
   })
 
   it('keeps manual sensor fields free of discovery preview snapshots', async () => {

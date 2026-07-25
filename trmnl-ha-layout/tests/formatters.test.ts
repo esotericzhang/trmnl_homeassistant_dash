@@ -10,6 +10,19 @@ describe('formatters', () => {
     expect(interpolate('Slept {{ minutes | minutes }} {{ unsafe }}', { minutes: '90', unsafe: '<ok>' })).toBe('Slept 1h 30m &lt;ok&gt;')
   })
 
+  it('uses a named format only when a placeholder has no inline filter', () => {
+    expect(interpolate('{{ duration }} at {{ startedAt | time }}', {
+      duration: '125',
+      startedAt: '2026-06-24T08:30:00Z'
+    }, 'minutes')).toMatch(/^2h 5m at (?!33774096h)/)
+  })
+
+  it('preserves explicit raw state strings without changing legacy defaults', () => {
+    expect(interpolate('{{ state }}', { state: 'unknown' }, 'raw')).toBe('unknown')
+    expect(interpolate('{{ state }}', { state: 'unknown' })).toBe('—')
+    expect(interpolate('{{ state | minutes }}', { state: '125' }, 'raw')).toBe('2h 5m')
+  })
+
   it('escapes literal text while preserving placeholders', () => {
     expect(interpolate('<b>{{ value }}</b>', { value: '<ok>' })).toBe('&lt;b&gt;&lt;ok&gt;&lt;/b&gt;')
   })

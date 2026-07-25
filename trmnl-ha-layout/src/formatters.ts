@@ -1,4 +1,5 @@
 export function formatValue(value: unknown, filter?: string): string {
+  if (filter?.trim() === 'raw') return String(value)
   if (value === null || value === undefined || value === 'unknown' || value === 'unavailable') return '—'
   switch (filter?.trim()) {
     case 'time':
@@ -38,7 +39,7 @@ export function interpolate(template: string, values: Record<string, unknown>, f
   let lastIndex = 0
   for (const match of template.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g)) {
     result += escapeXml(template.slice(lastIndex, match.index))
-    result += escapeXml(formatValue(values[match[1]], filterOverride ?? match[2]))
+    result += escapeXml(formatValue(values[match[1]], match[2] ?? filterOverride))
     lastIndex = match.index + match[0].length
   }
   return result + escapeXml(template.slice(lastIndex))

@@ -58,4 +58,11 @@ describe('layout config', () => {
     Object.assign(metric, { valueFormat: 'surprising' })
     expect(() => validateLayoutConfig(config)).toThrow('invalid valueFormat')
   })
+
+  it('rejects value formats on non-metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const text = config.items.find(item => item.type === 'text')!
+    Object.assign(text, { valueFormat: 'raw' })
+    expect(() => validateLayoutConfig(config)).toThrow('may only use valueFormat when type is metric')
+  })
 })
