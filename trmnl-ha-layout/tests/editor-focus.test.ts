@@ -135,6 +135,33 @@ describe('editor focus continuity', () => {
     expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')).toBe(true)
   })
 
+  it('restores each dirty schedule preview when regeneration fails', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [
+      '<svg xmlns="http://www.w3.org/2000/svg"><text>default draft</text></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><text>second draft</text></svg>',
+      new Response('preview unavailable', { status: 503 })
+    ])
+    const document = dom.window.document
+    const title = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    title.value = 'Default draft'
+    title.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('default%20draft'))
+    const defaultSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    const secondTitle = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    secondTitle.value = 'Second draft'
+    secondTitle.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('second%20draft'))
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(defaultSrc)
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(defaultSrc)
+  })
+
   it('regenerates the unsaved preview after overlapping deletions', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[1].x = 20
@@ -310,6 +337,13 @@ describe('editor focus continuity', () => {
     delete (snapshotLayout.items[2] as { valueFormat?: string }).valueFormat
     dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('—')
+  })
+
+  it('keeps a raw value unit when a later placeholder is formatted', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', previewState: '21.5', previewUnit: '°C' })
+    const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toContain('°C')
   })
 
   it('shows omitted legacy formatting as Default', async () => {

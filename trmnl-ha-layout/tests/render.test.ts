@@ -197,6 +197,16 @@ describe('renderer', () => {
     expect(renderSvg(config, { values: { duration: 'unknown' }, states: {} })).toContain('>—</text>')
   })
 
+  it('keeps the value unit when only a later placeholder is transformed', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature', updated: 'sensor.updated' } },
+      items: [{ id: 'mixed', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Mixed', value: '{{ temperature }} at {{ updated | time }}', previewUnit: '°C' }]
+    }
+    const svg = renderSvg(config, { values: { temperature: '21.5', updated: '2026-06-24T08:30:00Z' }, states: {} })
+    expect(svg).toContain('°C</text>')
+  })
+
   it('clips runtime metric content to the configured item bounds', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
