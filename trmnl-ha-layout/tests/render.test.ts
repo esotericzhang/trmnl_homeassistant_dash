@@ -137,7 +137,7 @@ describe('renderer', () => {
     expect(svg).not.toContain('</text><script>')
   })
 
-  it('ignores editor preview snapshots during runtime metric rendering', () => {
+  it('uses picker metadata to insert the live runtime unit', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature' } },
@@ -154,6 +154,51 @@ describe('renderer', () => {
     expect(svg).toContain('>99 °F</text>')
     expect(svg).not.toContain('°C')
     expect(svg).not.toContain('21.5')
+  })
+
+  it('preserves legacy literal units without automatic runtime insertion', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }} °C' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°F' } } }
+    })
+
+    expect(svg).toContain('>21.5 °C</text>')
+    expect(svg).not.toContain('°F')
+  })
+
+  it('does not append a runtime unit to unavailable fallback values', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', previewUnit: '°C' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: 'unavailable' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: 'unavailable', attributes: { unit_of_measurement: '°F' } } }
+    })
+
+    expect(svg).toContain('>—</text>')
+    expect(svg).not.toContain('— °F')
+  })
+
+  it('tracks live unit changes instead of persisting the picker preview unit', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', previewUnit: '°C' }]
+    }
+    const renderWithUnit = (unit: string) => renderSvg(config, {
+      values: { temperature: '70' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '70', attributes: { unit_of_measurement: unit } } }
+    })
+
+    expect(renderWithUnit('°F')).toContain('>70 °F</text>')
+    expect(renderWithUnit('K')).toContain('>70 K</text>')
   })
 
   it('suppresses discovered units after duration conversion', () => {
@@ -301,6 +346,14 @@ describe('renderer', () => {
     expect(html).toContain('config.data.entities[source]=entity')
     expect(html).toContain("value:'{{ '+source+' }}'")
     expect(html).toContain("status('Added field. Save to persist it to runtime YAML.')")
+  })
+
+  it('defines each core editor function once without layered reassignment', () => {
+    const html = renderEditorHtml()
+    for (const name of ['api', 'setAddMode', 'selectHomeAssistantEntity', 'renderOverlay', 'loadActiveConfig', 'fieldHtml', 'refreshPreview', 'refreshDraftPreview', 'metricPreviewText']) {
+      expect(html.match(new RegExp(`(?:async )?function ${name}\\(`, 'g'))).toHaveLength(1)
+      expect(html).not.toMatch(new RegExp(`${name}\\s*=`))
+    }
   })
 
   it('includes delete-field handling with confirmation and unused entity cleanup', () => {
