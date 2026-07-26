@@ -343,6 +343,14 @@ describe('renderer', () => {
     expect(html).not.toContain("placeholder=\"' + (settings.haToken || 'set to replace')")
   })
 
+  it('escapes bootstrap tokens for an inline script context', () => {
+    const token = '</script><script>globalThis.pwned=true</script>&>\u2028\u2029'
+    const html = renderEditorHtml(token)
+    expect(html).not.toContain(token)
+    expect(html).toContain('\\u003c/script\\u003e\\u003cscript\\u003e')
+    expect(html).toContain('\\u0026\\u003e\\u2028\\u2029')
+  })
+
   it('labels the byos-uri URL as Add-on URL and shows it only for byos-uri mode', () => {
     const html = renderEditorHtml()
     expect(html).toContain('const showAddonUrl = mode === \'byos-uri\';')

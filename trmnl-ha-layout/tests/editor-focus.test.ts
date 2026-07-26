@@ -208,6 +208,39 @@ describe('editor focus continuity', () => {
     expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')).toBe(true)
   })
 
+  it('keeps masks until a replacement draft image loads', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
+      '<svg xmlns="http://www.w3.org/2000/svg"><text>updated</text></svg>'
+    ], false)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('updated'))
+    const hasDeletedMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')
+    expect(hasDeletedMask()).toBe(true)
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(hasDeletedMask()).toBe(false)
+  })
+
+  it('restores the prior image and masks when a replacement image fails', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
+      '<svg xmlns="http://www.w3.org/2000/svg"><text>broken</text></svg>'
+    ], false)
+    const document = dom.window.document
+    const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+    document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('broken'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')).toBe(true)
+    expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed')
+  })
+
   it('debounces layout previews and skips schedule metadata changes', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -580,7 +613,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = []): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -623,6 +656,15 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     url: 'http://editor.local/editor',
     runScripts: 'dangerously',
     beforeParse(window) {
+      const src = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src')
+      if (src?.get && src.set) Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
+        configurable: true,
+        get: src.get,
+        set(value: string) {
+          src.set!.call(this, value)
+          if (autoLoadDraftImages && value.startsWith('data:image/svg+xml')) queueMicrotask(() => this.dispatchEvent(new window.Event('load')))
+        }
+      })
       Object.defineProperty(window, 'fetch', { value: fetcher })
       Object.defineProperty(window, 'confirm', { value: () => true })
       Object.defineProperty(window, 'prompt', { value: () => null })
