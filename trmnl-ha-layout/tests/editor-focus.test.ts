@@ -162,6 +162,21 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(defaultSrc)
   })
 
+  it('uses a fresh server preview when returning to a clean schedule', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const firstSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
+
+    const refreshedSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+    expect(refreshedSrc).toContain('/schedules/default/screen.svg?sample=1&t=')
+    expect(refreshedSrc).not.toBe(firstSrc)
+  })
+
   it('regenerates the unsaved preview after overlapping deletions', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[1].x = 20

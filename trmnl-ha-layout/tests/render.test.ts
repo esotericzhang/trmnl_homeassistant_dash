@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import sharp from 'sharp'
 import { loadLayoutConfig } from '../src/config.js'
 import { sampleRenderData } from '../src/homeAssistant.js'
 import { renderEditorHtml, renderSvg } from '../src/render.js'
@@ -286,6 +287,26 @@ describe('renderer', () => {
     const svg = renderSvg(config, { values: { state: 'Long runtime value outside bounds' }, states: {} })
     expect(svg).toContain('<clipPath id="layout-clip-0"><rect x="0" y="0" width="40" height="25" /></clipPath>')
     expect(svg).toContain('<g clip-path="url(#layout-clip-0)">')
+  })
+
+  it('keeps standard metric value glyphs inside a 62px card', async () => {
+    const config: LayoutConfig = {
+      frame: { width: 180, height: 80, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: {} },
+      items: [{ id: 'standard', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ state }}', fontSize: 30 }]
+    }
+    const svg = renderSvg(config, { values: { state: 'gyjpQ' }, states: {} })
+    const rendered = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    const rowHasDarkText = (y: number) => {
+      for (let x = 10; x < 170; x++) {
+        const index = (y * rendered.info.width + x) * 3
+        if (rendered.data[index] < 80 && rendered.data[index + 1] < 80 && rendered.data[index + 2] < 80) return true
+      }
+      return false
+    }
+
+    expect(svg).toContain('<text x="16" y="30" font-size="30" font-weight="700">gyjpQ</text>')
+    expect(rowHasDarkText(60)).toBe(false)
   })
 
   it('clips runtime text to the configured item bounds', () => {
