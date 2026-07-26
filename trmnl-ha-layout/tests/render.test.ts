@@ -146,9 +146,13 @@ describe('renderer', () => {
         label: 'Temperature', value: '{{ temperature }}', previewState: '21.5', previewUnit: '°C'
       }]
     }
-    const svg = renderSvg(config, { values: { temperature: '99' }, states: {} })
+    const svg = renderSvg(config, {
+      values: { temperature: '99' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '99', attributes: { unit_of_measurement: '°F' } } }
+    })
 
-    expect(svg).toContain('>99 °C</text>')
+    expect(svg).toContain('>99 °F</text>')
+    expect(svg).not.toContain('°C')
     expect(svg).not.toContain('21.5')
   })
 
@@ -203,8 +207,29 @@ describe('renderer', () => {
       data: { entities: { temperature: 'sensor.temperature', updated: 'sensor.updated' } },
       items: [{ id: 'mixed', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Mixed', value: '{{ temperature }} at {{ updated | time }}', previewUnit: '°C' }]
     }
-    const svg = renderSvg(config, { values: { temperature: '21.5', updated: '2026-06-24T08:30:00Z' }, states: {} })
-    expect(svg).toContain('°C</text>')
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5', updated: '2026-06-24T08:30:00Z' },
+      states: {
+        temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } },
+        updated: { entity_id: 'sensor.updated', state: '2026-06-24T08:30:00Z', attributes: {} }
+      }
+    })
+    expect(svg).toMatch(/>21\.5 °C at [^<]+<\/text>/)
+    expect(svg).not.toMatch(/at [^<]+ °C<\/text>/)
+  })
+
+  it('places a live unit beside its placeholder in decorated templates', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'decorated', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} indoors', previewUnit: 'stale' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
+    })
+    expect(svg).toContain('>21.5 °C indoors</text>')
+    expect(svg).not.toContain('stale')
   })
 
   it('clips runtime metric content to the configured item bounds', () => {

@@ -343,7 +343,15 @@ describe('editor focus continuity', () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
-    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toContain('°C')
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toMatch(/^21\.5 °C at /)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).not.toMatch(/at .* °C$/)
+  })
+
+  it('places a snapshot unit beside its placeholder in decorated templates', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', previewState: '21.5', previewUnit: '°C' })
+    const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C indoors')
   })
 
   it('shows omitted legacy formatting as Default', async () => {

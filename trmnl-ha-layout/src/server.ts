@@ -239,9 +239,16 @@ app.post('/api/schedules/:id/preview', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try {
     getSchedule(req.params.id)
+  } catch (error) {
+    handleScheduleError(error, res, next)
+    return
+  }
+  try {
     validateLayoutConfig(req.body)
     res.type('svg').send(renderSvg(req.body, sampleRenderData(req.body)))
-  } catch (error) { handleScheduleError(error, res, next) }
+  } catch {
+    res.status(400).json({ status: 'error', message: 'Invalid layout preview request.' })
+  }
 })
 
 app.put('/api/schedules/:id/config', (req, res, next) => {
@@ -299,13 +306,13 @@ app.get('/api/settings', (_req, res, next) => {
 })
 
 app.get('/api/home-assistant/entities', async (req, res) => {
-  if (!requireMutationAuth(req, res)) return
-  const config = await currentRuntime()
-  if (!config.accessToken) {
-    res.status(400).json({ status: 'error', message: 'Home Assistant credentials are not configured. Add a long-lived token in Global connection.' })
-    return
-  }
   try {
+    if (!requireMutationAuth(req, res)) return
+    const config = await currentRuntime()
+    if (!config.accessToken) {
+      res.status(400).json({ status: 'error', message: 'Home Assistant credentials are not configured. Add a long-lived token in Global connection.' })
+      return
+    }
     const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates(AbortSignal.timeout(10_000))
     const entities = states
       .filter(validHassState)

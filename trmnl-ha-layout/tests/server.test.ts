@@ -1,7 +1,8 @@
+import fs from 'node:fs'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Server } from 'node:http'
 import type { Settings } from '../src/config.js'
-import { loadSettings, saveSettings } from '../src/config.js'
+import { loadSettings, resolveSettingsPath, saveSettings } from '../src/config.js'
 import { app, terminusOptionsForSchedule } from '../src/server.js'
 import { loadScheduleLayout, loadSchedulesIndex, saveScheduleLayout } from '../src/schedules.js'
 import type { Schedule } from '../src/schedules.js'
@@ -131,6 +132,24 @@ describe('server routes', () => {
     })
     expect(response.headers.get('content-type')).toContain('image/svg+xml')
     expect(loadScheduleLayout(list.defaultScheduleId).items).toHaveLength(saved.items.length)
+  })
+
+  it('returns a sanitized client error for invalid draft previews', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame: { width: -1 } })
+    })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ status: 'error', message: 'Invalid layout preview request.' })
+
+    const missing = await fetch(`${baseUrl}/api/schedules/missing/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    expect(missing.status).toBe(404)
   })
 
   it('masks schedule webhook URLs and rejects client-owned status updates', async () => {
@@ -293,6 +312,22 @@ describe('settings + terminus auth routes', () => {
     const text = await res.text()
     expect(text).toContain('discovery timed out')
     expect(text).not.toContain('ha-secret')
+  })
+
+  it('sanitizes runtime configuration failures during entity discovery', async () => {
+    const settingsPath = resolveSettingsPath()
+    const original = fs.readFileSync(settingsPath, 'utf8')
+    fs.writeFileSync(settingsPath, '{ private malformed settings', 'utf8')
+    try {
+      const response = await fetch(`${baseUrl}/api/home-assistant/entities`)
+      expect(response.status).toBe(502)
+      const text = await response.text()
+      expect(text).toContain('Could not connect to the configured Home Assistant instance.')
+      expect(text).not.toContain('malformed settings')
+      expect(text).not.toContain('JSON')
+    } finally {
+      fs.writeFileSync(settingsPath, original, 'utf8')
+    }
   })
 
   it('requires settings authentication for Home Assistant discovery', async () => {
