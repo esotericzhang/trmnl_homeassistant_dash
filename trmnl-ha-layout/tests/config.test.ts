@@ -57,6 +57,11 @@ describe('layout config', () => {
     if (!metric || metric.type !== 'metric') throw new Error('expected metric')
     Object.assign(metric, { valueFormat: 'surprising' })
     expect(() => validateLayoutConfig(config)).toThrow('invalid valueFormat')
+
+    for (const valueFormat of [['raw'], 1, null]) {
+      Object.assign(metric, { valueFormat })
+      expect(() => validateLayoutConfig(config)).toThrow('invalid valueFormat')
+    }
   })
 
   it('rejects value formats on non-metric items', () => {

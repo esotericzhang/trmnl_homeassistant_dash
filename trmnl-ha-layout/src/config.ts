@@ -62,7 +62,7 @@ function validateItem(item: LayoutItem): void {
   const candidate = item as LayoutItem & Record<string, unknown>
   if ('valueFormat' in candidate) {
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use valueFormat when type is metric`)
-    if (!['raw', 'duration-minutes'].includes(String(candidate.valueFormat))) {
+    if (typeof candidate.valueFormat !== 'string' || !['raw', 'duration-minutes'].includes(candidate.valueFormat)) {
       throw new Error(`item ${item.id} has invalid valueFormat`)
     }
   }

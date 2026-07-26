@@ -148,6 +148,45 @@ describe('editor focus continuity', () => {
     expect(body.items.find(item => item.id === 'sensor-text')).toBeDefined()
   })
 
+  it('masks content from the displayed draft when its next preview fails', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
+      '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      new Response('preview unavailable', { status: 503 })
+    ])
+    const document = dom.window.document
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Draft title'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+
+    document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
+
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')).toBe(true)
+  })
+
+  it('debounces layout previews and skips schedule metadata changes', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    for (const value of ['AB', 'ABC', 'ABCD']) {
+      text.value = value
+      text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    }
+    await vi.waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname.endsWith('/preview'))
+      expect(calls).toHaveLength(1)
+    })
+
+    const name = document.querySelector<HTMLInputElement>('#schedule-name')!
+    name.value = 'Renamed'
+    name.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    await new Promise(resolve => setTimeout(resolve, 150))
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname.endsWith('/preview'))
+    expect(calls).toHaveLength(1)
+  })
+
   it('keeps persisted sensor text and metrics in the authoritative server preview', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -271,6 +310,14 @@ describe('editor focus continuity', () => {
     delete (snapshotLayout.items[2] as { valueFormat?: string }).valueFormat
     dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('—')
+  })
+
+  it('shows omitted legacy formatting as Default', async () => {
+    const dom = await editorDom()
+    dom.window.document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const format = dom.window.document.querySelector<HTMLSelectElement>('select[name="valueFormat"]')
+    expect(format?.value).toBe('')
+    expect(format?.selectedOptions[0]?.textContent).toBe('Default')
   })
 
   it('keeps manual sensor fields free of discovery preview snapshots', async () => {
@@ -476,7 +523,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = []): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -504,6 +551,9 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
       return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     if (path.endsWith('/preview')) {
+      const previewResponse = previewResponses.shift()
+      if (previewResponse instanceof Response) return previewResponse
+      if (typeof previewResponse === 'string') return new Response(previewResponse, { status: 200, headers: { 'Content-Type': 'image/svg+xml' } })
       if (secondSchedule) return new Response('preview unavailable', { status: 503 })
       return new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>', { status: 200, headers: { 'Content-Type': 'image/svg+xml' } })
     }

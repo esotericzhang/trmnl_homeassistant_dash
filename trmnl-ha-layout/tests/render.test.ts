@@ -148,8 +148,20 @@ describe('renderer', () => {
     }
     const svg = renderSvg(config, { values: { temperature: '99' }, states: {} })
 
-    expect(svg).toContain('>99</text>')
+    expect(svg).toContain('>99 °C</text>')
     expect(svg).not.toContain('21.5')
+  })
+
+  it('suppresses discovered units after duration conversion', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { minutes: 'sensor.minutes' } },
+      items: [{ id: 'duration', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Duration', value: '{{ minutes }}', valueFormat: 'duration-minutes', previewUnit: 'min' }]
+    }
+
+    const svg = renderSvg(config, { values: { minutes: '135' }, states: {} })
+    expect(svg).toContain('>2h 15m</text>')
+    expect(svg).not.toContain('2h 15m min')
   })
 
   it('applies named metric duration formatting to runtime values', () => {
