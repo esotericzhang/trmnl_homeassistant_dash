@@ -193,6 +193,18 @@ function sendLayoutConfig(req: express.Request, res: express.Response, layout: R
   res.json(layout)
 }
 
+function handleLayoutConfigReadError(req: express.Request, res: express.Response, error: unknown, next: express.NextFunction): void {
+  if (scheduleNotFound(error)) {
+    handleScheduleError(error, res, next)
+    return
+  }
+  if (!isMutationAuthenticated(req)) {
+    requireMutationAuth(req, res)
+    return
+  }
+  next(error)
+}
+
 app.get('/api/schedules', (_req, res, next) => {
   try { res.json({ defaultScheduleId: defaultScheduleId(), schedules: listSchedules().map(scheduleForApi) }) } catch (error) { next(error) }
 })
@@ -232,7 +244,7 @@ app.post('/api/schedules/:id/duplicate', (req, res, next) => {
 })
 
 app.get('/api/schedules/:id/config', (req, res, next) => {
-  try { sendLayoutConfig(req, res, loadScheduleLayout(req.params.id)) } catch (error) { handleScheduleError(error, res, next) }
+  try { sendLayoutConfig(req, res, loadScheduleLayout(req.params.id)) } catch (error) { handleLayoutConfigReadError(req, res, error, next) }
 })
 
 app.post('/api/schedules/:id/preview', (req, res, next) => {
@@ -288,7 +300,7 @@ app.get('/health', (_req, res) => {
 })
 
 app.get('/api/config', (req, res, next) => {
-  try { sendLayoutConfig(req, res, loadScheduleLayout(defaultScheduleId())) } catch (error) { next(error) }
+  try { sendLayoutConfig(req, res, loadScheduleLayout(defaultScheduleId())) } catch (error) { handleLayoutConfigReadError(req, res, error, next) }
 })
 
 app.put('/api/config', (req, res, next) => {

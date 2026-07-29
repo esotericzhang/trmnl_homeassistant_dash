@@ -161,6 +161,34 @@ describe('editor focus continuity', () => {
     expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).not.toBeNull()
   })
 
+  it('clears a saved replacement mask after a later clean preview commits', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], false)
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    document.querySelector<HTMLInputElement>('#new-label')!.value = 'Title'
+    document.querySelector<HTMLInputElement>('#new-entity')!.value = 'sensor.replacement'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    const hasOldTitleMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')
+    expect(hasOldTitleMask()).toBe(true)
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
+    expect(hasOldTitleMask()).toBe(true)
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(hasOldTitleMask()).toBe(false)
+    expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).toBeNull()
+  })
+
   it('preserves replacement masking across schedule switches', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
     const document = dom.window.document

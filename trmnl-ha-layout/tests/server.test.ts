@@ -4,7 +4,7 @@ import type { Server } from 'node:http'
 import type { Settings } from '../src/config.js'
 import { loadSettings, resolveSettingsPath, saveSettings } from '../src/config.js'
 import { app, terminusOptionsForSchedule } from '../src/server.js'
-import { loadScheduleLayout, loadSchedulesIndex, saveScheduleLayout } from '../src/schedules.js'
+import { loadScheduleLayout, loadSchedulesIndex, resolveScheduleLayoutPath, saveScheduleLayout } from '../src/schedules.js'
 import type { Schedule } from '../src/schedules.js'
 
 describe('server routes', () => {
@@ -359,6 +359,26 @@ describe('settings + terminus auth routes', () => {
       }
     } finally {
       saveScheduleLayout(scheduleId, original)
+    }
+  })
+
+  it('does not expose malformed protected config content before authentication', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    const layoutPath = resolveScheduleLayoutPath(scheduleId)
+    const original = fs.readFileSync(layoutPath, 'utf8')
+    fs.writeFileSync(layoutPath, 'items:\n  - previewState: private malformed snapshot\n    value: [', 'utf8')
+    saveSettings({ ...loadSettings(), settingsToken: 'guard-token' })
+
+    try {
+      for (const path of [`/api/schedules/${scheduleId}/config`, '/api/config']) {
+        const unauthorized = await fetch(`${baseUrl}${path}`)
+        expect(unauthorized.status).toBe(401)
+        const text = await unauthorized.text()
+        expect(text).not.toContain('private malformed snapshot')
+        expect(text).not.toContain('YAML')
+      }
+    } finally {
+      fs.writeFileSync(layoutPath, original, 'utf8')
     }
   })
 
