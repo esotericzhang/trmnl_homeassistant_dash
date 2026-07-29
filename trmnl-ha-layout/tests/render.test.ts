@@ -305,8 +305,8 @@ describe('renderer', () => {
       return false
     }
 
-    expect(svg).toContain('<text x="16" y="30" font-size="30" font-weight="700">gyjpQ</text>')
-    expect(rowHasDarkText(60)).toBe(false)
+    expect(svg).toContain('<text x="16" y="46" font-size="30" font-weight="700" dominant-baseline="alphabetic">gyjpQ</text>')
+    expect(Array.from({ length: 18 }, (_, index) => index + 62).some(rowHasDarkText)).toBe(false)
   })
 
   it('clips runtime text to the configured item bounds', () => {
@@ -418,7 +418,7 @@ describe('renderer', () => {
     expect(html).toContain("{method:'PATCH'")
     expect(html).toContain("{method:'DELETE'}")
     expect(html).toContain('id="schedule-webhook"')
-    expect(html).toContain("previewFrame.src='/schedules/'")
+    expect(html).toContain("'/schedules/'+encodeURIComponent(id)+'/screen.svg")
     expect(html).toContain("if(draft()?.dirty&&!await saveActive())return")
     expect(html).toContain('d.loadedSchedule=clone(target)')
   })

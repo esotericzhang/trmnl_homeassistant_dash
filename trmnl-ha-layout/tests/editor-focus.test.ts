@@ -186,7 +186,7 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
 
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(true)
+    expect(document.querySelectorAll('.item-mask')).toHaveLength(1)
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(false)
   })
@@ -203,8 +203,27 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(true)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')).toBe(true)
     expect(document.querySelector('#status')?.textContent).toContain('Preview failed')
+  })
+
+  it('masks a prior schedule with identical items but different entities', async () => {
+    const secondLayout = structuredClone(layout)
+    secondLayout.data.entities.temperature = 'sensor.outdoor_temperature'
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout)
+    const document = dom.window.document
+    const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+
+    const fullMask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '0px' && element.style.top === '0px')
+    expect(fullMask?.style.width).toBe('800px')
+    expect(fullMask?.style.height).toBe('480px')
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')).toBe(true)
   })
 
   it('ignores superseded clean preview transitions', async () => {
