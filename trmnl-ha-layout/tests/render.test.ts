@@ -264,6 +264,20 @@ describe('renderer', () => {
     expect(svg).not.toMatch(/at [^<]+ °C<\/text>/)
   })
 
+  it('inserts runtime units for every raw placeholder', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { duration: 'sensor.duration' } },
+      items: [{ id: 'duration', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Duration', value: '{{ duration | minutes }} / {{ duration }} / {{ duration }}', previewUnit: 'min' }]
+    }
+    const svg = renderSvg(config, {
+      values: { duration: '125' },
+      states: { duration: { entity_id: 'sensor.duration', state: '125', attributes: { unit_of_measurement: 'min' } } }
+    })
+
+    expect(svg).toContain('>2h 5m / 125 min / 125 min</text>')
+  })
+
   it('places a live unit beside its placeholder in decorated templates', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

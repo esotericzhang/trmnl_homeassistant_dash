@@ -119,6 +119,48 @@ describe('editor focus continuity', () => {
     expect(mask).toBeDefined()
   })
 
+  it('keeps same-ID replacement masks until the saved server preview commits', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false)
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    document.querySelector<HTMLInputElement>('#new-label')!.value = 'Title'
+    document.querySelector<HTMLInputElement>('#new-entity')!.value = 'sensor.replacement'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const hasOldTitleMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')
+    expect(hasOldTitleMask()).toBe(true)
+    expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).not.toBeNull()
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(hasOldTitleMask()).toBe(false)
+    expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).toBeNull()
+  })
+
+  it('keeps same-ID replacement masks when the saved server preview fails', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false)
+    const document = dom.window.document
+    const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#add-field')?.click()
+    document.querySelector<HTMLButtonElement>('[data-add-type="sensor"]')?.click()
+    document.querySelector<HTMLInputElement>('#new-label')!.value = 'Title'
+    document.querySelector<HTMLInputElement>('#new-entity')!.value = 'sensor.replacement'
+    document.querySelector<HTMLButtonElement>('#create-field')?.click()
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')).toBe(true)
+    expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).not.toBeNull()
+  })
+
   it('preserves replacement masking across schedule switches', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
     const document = dom.window.document
@@ -456,6 +498,17 @@ describe('editor focus continuity', () => {
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toMatch(/^21\.5 °C at /)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).not.toMatch(/at .* °C$/)
+  })
+
+  it('matches runtime unit placement for repeated and mixed placeholders', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} / {{ temperature }}', previewState: '125', previewUnit: 'min' })
+    let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125 min / 125 min')
+
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }} / {{ temperature }}' })
+    dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m / 125 min')
   })
 
   it('places a snapshot unit beside its placeholder in decorated templates', async () => {
