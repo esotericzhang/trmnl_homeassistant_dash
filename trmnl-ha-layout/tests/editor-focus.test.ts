@@ -177,6 +177,50 @@ describe('editor focus continuity', () => {
     expect(refreshedSrc).not.toBe(firstSrc)
   })
 
+  it('commits a clean schedule baseline only after its preview loads', async () => {
+    const secondLayout = structuredClone(layout)
+    secondLayout.items[0].x = 80
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout)
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(true)
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(false)
+  })
+
+  it('retains the prior baseline when a clean preview fails', async () => {
+    const secondLayout = structuredClone(layout)
+    secondLayout.items[0].x = 80
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout)
+    const document = dom.window.document
+    const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(true)
+    expect(document.querySelector('#status')?.textContent).toContain('Preview failed')
+  })
+
+  it('ignores superseded clean preview transitions', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/default/screen.svg'))
+    const requestedSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(requestedSrc)
+  })
+
   it('regenerates the unsaved preview after overlapping deletions', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[1].x = 20
@@ -423,6 +467,8 @@ describe('editor focus continuity', () => {
     expect(document.querySelector('.item[data-id="sensor"] .item-preview.metric')?.textContent).toContain('{{ sensor }}')
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    expect(document.querySelector('.item[data-id="sensor"] .item-preview.metric')).not.toBeNull()
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     expect(document.querySelector('.item[data-id="sensor"] .item-preview.metric')).toBeNull()
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
@@ -613,7 +659,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true, secondLayout: LayoutConfig = layout): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -622,7 +668,7 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
       status: { lastAttemptAt: null, lastSuccessAt: null, nextRunAt: null, result: null, error: null }
     }, ...(secondSchedule ? [{ id: 'second', name: 'Second', enabled: true, order: 1, timing: { kind: 'manual' }, destination: {}, status: {} }] : [])] }],
     ['/api/schedules/default/config', initialLayout],
-    ['/api/schedules/second/config', layout],
+    ['/api/schedules/second/config', secondLayout],
     ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
     ['/api/home-assistant/entities', discovery]
   ])
