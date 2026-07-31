@@ -6,6 +6,8 @@ import type { LayoutConfig, LayoutItem } from './types.js'
 const projectDefault = path.resolve(process.cwd(), 'data/default-layout.yaml')
 const addonDefault = '/data/layout.yaml'
 
+export class LayoutValidationError extends Error {}
+
 export function resolveLayoutPath(): string {
   if (process.env.LAYOUT_PATH) return process.env.LAYOUT_PATH
   if (fs.existsSync(addonDefault)) return addonDefault
@@ -41,15 +43,20 @@ export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayou
 }
 
 export function validateLayoutConfig(config: LayoutConfig): void {
-  if (!config?.frame || !config?.data?.entities || !Array.isArray(config.items)) {
-    throw new Error('Layout must include frame, data.entities, and items')
-  }
-  for (const key of ['width', 'height'] as const) {
-    if (!Number.isFinite(config.frame[key]) || config.frame[key] <= 0) {
-      throw new Error(`frame.${key} must be a positive number`)
+  try {
+    if (!config?.frame || !config?.data?.entities || !Array.isArray(config.items)) {
+      throw new Error('Layout must include frame, data.entities, and items')
     }
+    for (const key of ['width', 'height'] as const) {
+      if (!Number.isFinite(config.frame[key]) || config.frame[key] <= 0) {
+        throw new Error(`frame.${key} must be a positive number`)
+      }
+    }
+    config.items.forEach(validateItem)
+  } catch (error) {
+    if (error instanceof LayoutValidationError) throw error
+    throw new LayoutValidationError(error instanceof Error ? error.message : String(error))
   }
-  config.items.forEach(validateItem)
 }
 
 function validateItem(item: LayoutItem): void {
@@ -66,10 +73,13 @@ function validateItem(item: LayoutItem): void {
       throw new Error(`item ${item.id} has invalid valueFormat`)
     }
   }
-  for (const key of ['previewState', 'previewUnit'] as const) {
+  for (const key of ['previewSource', 'previewState', 'previewUnit'] as const) {
     if (!(key in candidate)) continue
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use ${key} when type is metric`)
     if (typeof candidate[key] !== 'string') throw new Error(`item ${item.id} has invalid ${key}`)
+  }
+  if (item.type === 'metric' && ('previewState' in candidate || 'previewUnit' in candidate) && !candidate.previewSource) {
+    throw new Error(`item ${item.id} preview snapshot requires previewSource`)
   }
 }
 

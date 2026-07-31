@@ -152,6 +152,31 @@ describe('server routes', () => {
     expect(missing.status).toBe(404)
   })
 
+  it('returns sanitized client errors for invalid persisted layout writes and rolls back combined updates', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const originalSchedule = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`).then((response) => response.json()) as { name: string }
+
+    for (const path of [`/api/schedules/${list.defaultScheduleId}/config`, '/api/config']) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frame: { width: -1 } })
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ status: 'error', message: 'Invalid layout configuration.' })
+    }
+
+    const combined = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedule: { name: 'Should roll back' }, config: { frame: { width: -1 } } })
+    })
+    expect(combined.status).toBe(400)
+    expect(await combined.json()).toEqual({ status: 'error', message: 'Invalid layout configuration.' })
+    const currentSchedule = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`).then((response) => response.json()) as { name: string }
+    expect(currentSchedule.name).toBe(originalSchedule.name)
+  })
+
   it('masks schedule webhook URLs and rejects client-owned status updates', async () => {
     const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
     await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`, {
@@ -342,7 +367,7 @@ describe('settings + terminus auth routes', () => {
     const snapshot = structuredClone(original)
     snapshot.items.push({
       id: 'private-preview', type: 'metric', x: 0, y: 0, width: 100, height: 60,
-      label: 'Private', value: '{{ private }}', previewState: 'locked', previewUnit: 'secret'
+      label: 'Private', value: '{{ private }}', previewSource: 'private', previewState: 'locked', previewUnit: 'secret'
     })
     saveScheduleLayout(scheduleId, snapshot)
     saveSettings({ ...loadSettings(), settingsToken: 'guard-token' })

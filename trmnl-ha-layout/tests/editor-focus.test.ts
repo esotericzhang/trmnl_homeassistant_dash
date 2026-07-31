@@ -486,6 +486,7 @@ describe('editor focus continuity', () => {
     expect(body.config.items.find(item => item.id === 'kitchen-temperature')).toMatchObject({
       type: 'metric',
       value: '{{ kitchenTemperature }}',
+      previewSource: 'kitchenTemperature',
       previewState: '21.5',
       previewUnit: '°C'
     })
@@ -493,7 +494,7 @@ describe('editor focus continuity', () => {
 
   it('formats metric preview snapshots with the named duration option', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { previewState: '125', previewUnit: 'min', valueFormat: 'duration-minutes' })
+    Object.assign(snapshotLayout.items[2], { previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'duration-minutes' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     const document = dom.window.document
 
@@ -508,11 +509,11 @@ describe('editor focus continuity', () => {
 
   it('honors inline preview filters and explicit raw state strings', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }}', previewState: '125', previewUnit: 'min', valueFormat: 'raw' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }}', previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'raw' })
     let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m')
 
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }}', previewState: 'unknown', previewUnit: undefined, valueFormat: 'raw' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }}', previewSource: 'temperature', previewState: 'unknown', previewUnit: undefined, valueFormat: 'raw' })
     dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('unknown')
     delete (snapshotLayout.items[2] as { valueFormat?: string }).valueFormat
@@ -522,15 +523,14 @@ describe('editor focus continuity', () => {
 
   it('keeps a raw value unit when a later placeholder is formatted', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', previewState: '21.5', previewUnit: '°C' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
-    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toMatch(/^21\.5 °C at /)
-    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).not.toMatch(/at .* °C$/)
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C at {{ updated | time }}')
   })
 
   it('matches runtime unit placement for repeated and mixed placeholders', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} / {{ temperature }}', previewState: '125', previewUnit: 'min' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} / {{ temperature }}', previewSource: 'temperature', previewState: '125', previewUnit: 'min' })
     let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125 min / 125 min')
 
@@ -541,7 +541,7 @@ describe('editor focus continuity', () => {
 
   it('places a snapshot unit beside its placeholder in decorated templates', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', previewState: '21.5', previewUnit: '°C' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C indoors')
   })
@@ -577,7 +577,7 @@ describe('editor focus continuity', () => {
 
   it('clears a saved preview snapshot when its value template changes', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { previewState: '21.5', previewUnit: '°C' })
+    Object.assign(snapshotLayout.items[2], { previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
     const document = dom.window.document
     document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
@@ -595,6 +595,7 @@ describe('editor focus continuity', () => {
     expect(metric).toMatchObject({ value: '{{ humidity }}' })
     expect(metric).not.toHaveProperty('previewState')
     expect(metric).not.toHaveProperty('previewUnit')
+    expect(metric).not.toHaveProperty('previewSource')
   })
 
   it('shows discovery failures while preserving manual entity creation', async () => {
@@ -729,6 +730,15 @@ describe('editor focus continuity', () => {
     })
   })
 
+  it('replaces a stale stored token and removes the bootstrap token from the URL', async () => {
+    const dom = await editorDom(null, { entities: [] }, undefined, 'fresh-token', [], layout, false, [], true, layout, 'http://editor.local/editor?token=fresh-token&panel=layout#canvas', 'stale-token')
+
+    expect(dom.window.sessionStorage.getItem('trmnl_settings_token')).toBe('fresh-token')
+    expect(dom.window.location.href).toBe('http://editor.local/editor?panel=layout#canvas')
+    const schedulesCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules')
+    expect(schedulesCall?.[1]?.headers).toMatchObject({ Authorization: 'Bearer fresh-token' })
+  })
+
   it('keeps schedule-name input focused as the non-replacing comparison path', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -759,7 +769,7 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true, secondLayout: LayoutConfig = layout): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true, secondLayout: LayoutConfig = layout, editorUrl = 'http://editor.local/editor', storedToken = ''): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
     ['/api/schedules', { schedules: [{
       id: 'default', name: 'Default', enabled: true, order: 0,
@@ -799,9 +809,10 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
   vi.stubGlobal('fetch', fetcher)
 
   const dom = new JSDOM(renderEditorHtml(bootstrapToken), {
-    url: 'http://editor.local/editor',
+    url: editorUrl,
     runScripts: 'dangerously',
     beforeParse(window) {
+      if (storedToken) window.sessionStorage.setItem('trmnl_settings_token', storedToken)
       const src = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src')
       if (src?.get && src.set) Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
         configurable: true,

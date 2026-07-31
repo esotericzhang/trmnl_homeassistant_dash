@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
   getAddonOptions,
+  LayoutValidationError,
   loadLayoutConfig,
   loadSettings,
   loadSettingsMasked,
@@ -174,6 +175,14 @@ function handleScheduleError(error: unknown, res: express.Response, next: expres
   next(error)
 }
 
+function handleLayoutWriteError(error: unknown, res: express.Response, next: express.NextFunction): void {
+  if (error instanceof LayoutValidationError) {
+    res.status(400).json({ status: 'error', message: 'Invalid layout configuration.' })
+    return
+  }
+  handleScheduleError(error, res, next)
+}
+
 function scheduleForApi(schedule: Schedule): Schedule {
   return {
     ...schedule,
@@ -185,7 +194,7 @@ function scheduleForApi(schedule: Schedule): Schedule {
 }
 
 function hasPreviewSnapshots(layout: ReturnType<typeof loadLayoutConfig>): boolean {
-  return layout.items.some(item => 'previewState' in item || 'previewUnit' in item)
+  return layout.items.some(item => 'previewSource' in item || 'previewState' in item || 'previewUnit' in item)
 }
 
 function sendLayoutConfig(req: express.Request, res: express.Response, layout: ReturnType<typeof loadLayoutConfig>): void {
@@ -265,7 +274,7 @@ app.post('/api/schedules/:id/preview', (req, res, next) => {
 
 app.put('/api/schedules/:id/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
-  try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleScheduleError(error, res, next) }
+  try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleLayoutWriteError(error, res, next) }
 })
 
 app.put('/api/schedules/:id', (req, res, next) => {
@@ -284,7 +293,7 @@ app.put('/api/schedules/:id', (req, res, next) => {
       updateSchedule(req.params.id, current)
       throw error
     }
-  } catch (error) { handleScheduleError(error, res, next) }
+  } catch (error) { handleLayoutWriteError(error, res, next) }
 })
 
 app.post('/api/schedules/:id/push', async (req, res, next) => {
@@ -305,7 +314,7 @@ app.get('/api/config', (req, res, next) => {
 
 app.put('/api/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
-  try { res.json(saveScheduleLayout(defaultScheduleId(), req.body)) } catch (error) { next(error) }
+  try { res.json(saveScheduleLayout(defaultScheduleId(), req.body)) } catch (error) { handleLayoutWriteError(error, res, next) }
 })
 
 app.post('/api/refresh', async (req, res, next) => {

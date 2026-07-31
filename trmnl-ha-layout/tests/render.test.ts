@@ -144,7 +144,7 @@ describe('renderer', () => {
       data: { entities: { temperature: 'sensor.temperature' } },
       items: [{
         id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62,
-        label: 'Temperature', value: '{{ temperature }}', previewState: '21.5', previewUnit: '°C'
+        label: 'Temperature', value: '{{ temperature }}', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C'
       }]
     }
     const svg = renderSvg(config, {

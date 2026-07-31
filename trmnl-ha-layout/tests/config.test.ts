@@ -35,6 +35,7 @@ describe('layout config', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const metric = config.items.find((item) => item.type === 'metric')
     if (!metric || metric.type !== 'metric') throw new Error('metric item missing')
+    metric.previewSource = 'temperature'
     metric.previewState = '21.5'
     metric.previewUnit = '°C'
 
@@ -43,6 +44,10 @@ describe('layout config', () => {
     const numericSnapshot = structuredClone(config) as unknown as LayoutConfig
     Object.assign(numericSnapshot.items.find((item) => item.id === metric.id)!, { previewState: 21.5 })
     expect(() => validateLayoutConfig(numericSnapshot)).toThrow('invalid previewState')
+
+    const unboundSnapshot = structuredClone(config) as unknown as LayoutConfig
+    delete (unboundSnapshot.items.find((item) => item.id === metric.id) as { previewSource?: string }).previewSource
+    expect(() => validateLayoutConfig(unboundSnapshot)).toThrow('preview snapshot requires previewSource')
 
     const textSnapshot = structuredClone(config) as unknown as LayoutConfig
     const text = textSnapshot.items.find((item) => item.type === 'text')!
