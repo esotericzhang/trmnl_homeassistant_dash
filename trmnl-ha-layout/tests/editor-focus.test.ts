@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
+import sharp from 'sharp'
 import { renderEditorHtml } from '../src/render.js'
 import type { LayoutConfig } from '../src/types.js'
 
@@ -144,6 +145,7 @@ describe('editor focus continuity', () => {
   it('keeps same-ID replacement masks when the saved server preview fails', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, false)
     const document = dom.window.document
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
 
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
@@ -266,6 +268,7 @@ describe('editor focus continuity', () => {
     secondLayout.items[0].x = 80
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout)
     const document = dom.window.document
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
 
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
@@ -282,6 +285,7 @@ describe('editor focus continuity', () => {
     secondLayout.data.entities.temperature = 'sensor.outdoor_temperature'
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout)
     const document = dom.window.document
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
 
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
@@ -310,6 +314,23 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(requestedSrc)
   })
 
+  it('restores the committed draft image after rapid switch failure', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], false)
+    const document = dom.window.document
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    const committedSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+    const pendingSecondSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/default/screen.svg'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(committedSrc)
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).not.toBe(pendingSecondSrc)
+  })
+
   it('regenerates the unsaved preview after overlapping deletions', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[1].x = 20
@@ -321,6 +342,35 @@ describe('editor focus continuity', () => {
     const body = JSON.parse(String(previewCall?.[1]?.body)) as LayoutConfig
     expect(body.items.find(item => item.id === 'title')).toBeUndefined()
     expect(body.items.find(item => item.id === 'sensor-text')).toBeDefined()
+  })
+
+  it('preserves surviving overlapping text pixels when draft preview generation fails', async () => {
+    const overlapping = structuredClone(layout)
+    overlapping.items[1].x = 20
+    overlapping.items[1].y = 20
+    const dom = await editorDom(null, undefined, undefined, '', [], overlapping, false, [new Response('preview unavailable', { status: 503 })])
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
+
+    expect(maskCovers(document, 25, 25)).toBe(false)
+    expect(await compositedPixel(document, 25, 25)).toEqual([0, 0, 0])
+  })
+
+  it('preserves surviving overlapping metric pixels when replacement images fail', async () => {
+    const overlapping = structuredClone(layout)
+    overlapping.items[2].x = 20
+    overlapping.items[2].y = 20
+    const dom = await editorDom(null, undefined, undefined, '', [], overlapping, false, ['<svg xmlns="http://www.w3.org/2000/svg"><text>broken</text></svg>'], false)
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('broken'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(maskCovers(document, 25, 25)).toBe(false)
+    expect(await compositedPixel(document, 25, 25)).toEqual([0, 0, 0])
   })
 
   it('masks content from the displayed draft when its next preview fails', async () => {
@@ -362,6 +412,7 @@ describe('editor focus continuity', () => {
       '<svg xmlns="http://www.w3.org/2000/svg"><text>broken</text></svg>'
     ], false)
     const document = dom.window.document
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     const priorSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
     document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
@@ -486,6 +537,7 @@ describe('editor focus continuity', () => {
     expect(body.config.items.find(item => item.id === 'kitchen-temperature')).toMatchObject({
       type: 'metric',
       value: '{{ kitchenTemperature }}',
+      unitSource: 'kitchenTemperature',
       previewSource: 'kitchenTemperature',
       previewState: '21.5',
       previewUnit: '°C'
@@ -596,6 +648,7 @@ describe('editor focus continuity', () => {
     expect(metric).not.toHaveProperty('previewState')
     expect(metric).not.toHaveProperty('previewUnit')
     expect(metric).not.toHaveProperty('previewSource')
+    expect(metric).not.toHaveProperty('unitSource')
   })
 
   it('shows discovery failures while preserving manual entity creation', async () => {
@@ -839,4 +892,20 @@ function dispatchPointer(dom: JSDOM, target: HTMLElement, type: string, clientX:
   const event = new dom.window.MouseEvent(type, { bubbles: true, clientX, clientY })
   Object.defineProperty(event, 'pointerId', { value: 1 })
   target.dispatchEvent(event)
+}
+
+function maskCovers(document: Document, x: number, y: number): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(mask => {
+    const left = Number.parseFloat(mask.style.left)
+    const top = Number.parseFloat(mask.style.top)
+    return x >= left && x < left + Number.parseFloat(mask.style.width) && y >= top && y < top + Number.parseFloat(mask.style.height)
+  })
+}
+
+async function compositedPixel(document: Document, x: number, y: number): Promise<number[]> {
+  const masks = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).map(mask => `<rect x="${Number.parseFloat(mask.style.left)}" y="${Number.parseFloat(mask.style.top)}" width="${Number.parseFloat(mask.style.width)}" height="${Number.parseFloat(mask.style.height)}" fill="white"/>`).join('')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="100"><rect width="220" height="100" fill="white"/><rect x="10" y="10" width="200" height="30" fill="black"/><rect x="20" y="20" width="180" height="70" fill="black"/>${masks}</svg>`
+  const image = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+  const offset = (y * image.info.width + x) * 3
+  return Array.from(image.data.subarray(offset, offset + 3))
 }

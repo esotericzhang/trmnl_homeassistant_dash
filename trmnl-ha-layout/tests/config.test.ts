@@ -75,4 +75,16 @@ describe('layout config', () => {
     Object.assign(text, { valueFormat: 'raw' })
     expect(() => validateLayoutConfig(config)).toThrow('may only use valueFormat when type is metric')
   })
+
+  it('validates runtime unit sources only on metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { unitSource: 'temperature' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+    Object.assign(metric, { unitSource: '' })
+    expect(() => validateLayoutConfig(config)).toThrow('invalid unitSource')
+    const text = config.items.find(item => item.type === 'text')!
+    Object.assign(text, { unitSource: 'temperature' })
+    expect(() => validateLayoutConfig(config)).toThrow('may only use unitSource when type is metric')
+  })
 })

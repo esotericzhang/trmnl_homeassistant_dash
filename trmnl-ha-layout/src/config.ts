@@ -73,6 +73,10 @@ function validateItem(item: LayoutItem): void {
       throw new Error(`item ${item.id} has invalid valueFormat`)
     }
   }
+  if ('unitSource' in candidate) {
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use unitSource when type is metric`)
+    if (typeof candidate.unitSource !== 'string' || !candidate.unitSource) throw new Error(`item ${item.id} has invalid unitSource`)
+  }
   for (const key of ['previewSource', 'previewState', 'previewUnit'] as const) {
     if (!(key in candidate)) continue
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use ${key} when type is metric`)

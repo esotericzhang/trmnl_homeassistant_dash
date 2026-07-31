@@ -138,13 +138,13 @@ describe('renderer', () => {
     expect(svg).not.toContain('</text><script>')
   })
 
-  it('uses picker metadata to insert the live runtime unit', () => {
+  it('uses explicit picker runtime configuration to insert the live unit', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature' } },
       items: [{
         id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62,
-        label: 'Temperature', value: '{{ temperature }}', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C'
+        label: 'Temperature', value: '{{ temperature }}', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C'
       }]
     }
     const svg = renderSvg(config, {
@@ -172,11 +172,27 @@ describe('renderer', () => {
     expect(svg).not.toContain('°F')
   })
 
+  it('keeps editor preview metadata out of runtime rendering', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '99' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '99', attributes: { unit_of_measurement: '°F' } } }
+    })
+
+    expect(svg).toContain('>99</text>')
+    expect(svg).not.toContain('°F')
+    expect(svg).not.toContain('21.5')
+  })
+
   it('does not append a runtime unit to unavailable fallback values', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature' } },
-      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', previewUnit: '°C' }]
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', unitSource: 'temperature', previewUnit: '°C' }]
     }
     const svg = renderSvg(config, {
       values: { temperature: 'unavailable' },
@@ -191,7 +207,7 @@ describe('renderer', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature' } },
-      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', previewUnit: '°C' }]
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }}', unitSource: 'temperature', previewUnit: '°C' }]
     }
     const renderWithUnit = (unit: string) => renderSvg(config, {
       values: { temperature: '70' },
@@ -251,7 +267,7 @@ describe('renderer', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature', updated: 'sensor.updated' } },
-      items: [{ id: 'mixed', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Mixed', value: '{{ temperature }} at {{ updated | time }}', previewUnit: '°C' }]
+      items: [{ id: 'mixed', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Mixed', value: '{{ temperature }} at {{ updated | time }}', unitSource: 'temperature', previewUnit: '°C' }]
     }
     const svg = renderSvg(config, {
       values: { temperature: '21.5', updated: '2026-06-24T08:30:00Z' },
@@ -268,7 +284,7 @@ describe('renderer', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { duration: 'sensor.duration' } },
-      items: [{ id: 'duration', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Duration', value: '{{ duration | minutes }} / {{ duration }} / {{ duration }}', previewUnit: 'min' }]
+      items: [{ id: 'duration', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Duration', value: '{{ duration | minutes }} / {{ duration }} / {{ duration }}', unitSource: 'duration', previewUnit: 'min' }]
     }
     const svg = renderSvg(config, {
       values: { duration: '125' },
@@ -282,7 +298,7 @@ describe('renderer', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature' } },
-      items: [{ id: 'decorated', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} indoors', previewUnit: 'stale' }]
+      items: [{ id: 'decorated', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} indoors', unitSource: 'temperature', previewUnit: 'stale' }]
     }
     const svg = renderSvg(config, {
       values: { temperature: '21.5' },
