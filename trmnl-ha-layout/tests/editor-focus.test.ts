@@ -402,9 +402,44 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
 
-    expect(maskCovers(document, 25, 55)).toBe(true)
-    expect(document.querySelector('.item[data-id="sensor-text"] .item-preview')?.textContent).toBe('{{ temperature }}')
+    expect(maskCovers(document, 25, 55)).toBe(false)
+    expect(document.querySelector('.item[data-id="sensor-text"] .item-preview')).toBeNull()
     expect(await compositedPixel(document, 25, 55, overlapping.items)).toEqual([0, 0, 0])
+  })
+
+  it('preserves unsupported overlapping item types when preview generation fails', async () => {
+    const overlapping = structuredClone(layout)
+    overlapping.items.splice(1, 0, { id: 'divider', type: 'line', x: 20, y: 20, width: 200, height: 2 })
+    const dom = await editorDom(null, undefined, undefined, '', [], overlapping, false, [new Response('preview unavailable', { status: 503 })])
+    const document = dom.window.document
+
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
+
+    expect(maskCovers(document, 25, 20)).toBe(false)
+    expect(document.querySelector('.item[data-id="divider"] .item-preview')).toBeNull()
+    expect(await compositedPixel(document, 25, 20, overlapping.items)).toEqual([0, 0, 0])
+  })
+
+  it('restores cached ownership when a clean schedule revisit preview fails', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true)
+    const document = dom.window.document
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    const secondSrc = document.querySelector<HTMLImageElement>('#preview-frame')!.src
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/default/screen.svg'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(secondSrc)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')).toBe(false)
   })
 
   it('masks content from the displayed draft when its next preview fails', async () => {
