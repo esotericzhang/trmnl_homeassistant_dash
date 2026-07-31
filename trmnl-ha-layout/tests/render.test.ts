@@ -381,6 +381,16 @@ describe('renderer', () => {
     expect(html).toContain('\\u0026\\u003e\\u2028\\u2029')
   })
 
+  it('prevents the token-bearing editor URL from becoming a preview referer', () => {
+    const html = renderEditorHtml('editor-token')
+    const policyIndex = html.indexOf('<meta name="referrer" content="no-referrer">')
+    const previewIndex = html.indexOf('<img id="preview-frame"')
+
+    expect(policyIndex).toBeGreaterThan(-1)
+    expect(policyIndex).toBeLessThan(previewIndex)
+    expect(html).toContain('src="/screen.svg?sample=1" referrerpolicy="no-referrer"')
+  })
+
   it('labels the byos-uri URL as Add-on URL and shows it only for byos-uri mode', () => {
     const html = renderEditorHtml()
     expect(html).toContain('const showAddonUrl = mode === \'byos-uri\';')
