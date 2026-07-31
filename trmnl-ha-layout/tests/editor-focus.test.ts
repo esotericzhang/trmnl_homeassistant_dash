@@ -280,6 +280,24 @@ describe('editor focus continuity', () => {
     expect(document.querySelector('#status')?.textContent).toContain('Preview failed')
   })
 
+  it('keeps the default bootstrap image masked when the first ordered schedule preview fails', async () => {
+    const secondLayout = structuredClone(layout)
+    secondLayout.items[0].x = 80
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout, 'http://editor.local/editor', '', { defaultOrder: 1, secondOrder: 0 })
+    const document = dom.window.document
+
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
+    const fullMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')
+    expect(fullMask()).toBe(true)
+
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
+
+    expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe('http://editor.local/screen.svg?sample=1')
+    expect(fullMask()).toBe(true)
+    expect(document.querySelector('#status')?.textContent).toContain('Preview failed')
+  })
+
   it('masks a prior schedule with identical items but different entities', async () => {
     const secondLayout = structuredClone(layout)
     secondLayout.data.entities.temperature = 'sensor.outdoor_temperature'
@@ -822,14 +840,14 @@ describe('editor focus continuity', () => {
   })
 })
 
-async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true, secondLayout: LayoutConfig = layout, editorUrl = 'http://editor.local/editor', storedToken = ''): Promise<JSDOM> {
+async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true, secondLayout: LayoutConfig = layout, editorUrl = 'http://editor.local/editor', storedToken = '', scheduleOrder: { defaultOrder?: number; secondOrder?: number } = {}): Promise<JSDOM> {
   const responses = new Map<string, unknown>([
-    ['/api/schedules', { schedules: [{
-      id: 'default', name: 'Default', enabled: true, order: 0,
+    ['/api/schedules', { defaultScheduleId: 'default', schedules: [{
+      id: 'default', name: 'Default', enabled: true, order: scheduleOrder.defaultOrder ?? 0,
       timing: { kind: 'manual' },
       destination: { deviceId: null, playlistId: null, mode: webhookUrl ? 'raw-webhook' : null, screenId: null, webhookUrl, modelId: null, screenName: null, screenLabel: null },
       status: { lastAttemptAt: null, lastSuccessAt: null, nextRunAt: null, result: null, error: null }
-    }, ...(secondSchedule ? [{ id: 'second', name: 'Second', enabled: true, order: 1, timing: { kind: 'manual' }, destination: {}, status: {} }] : [])] }],
+    }, ...(secondSchedule ? [{ id: 'second', name: 'Second', enabled: true, order: scheduleOrder.secondOrder ?? 1, timing: { kind: 'manual' }, destination: {}, status: {} }] : [])] }],
     ['/api/schedules/default/config', initialLayout],
     ['/api/schedules/second/config', secondLayout],
     ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
