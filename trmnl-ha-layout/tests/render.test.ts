@@ -138,6 +138,22 @@ describe('renderer', () => {
     expect(svg).not.toContain('</text><script>')
   })
 
+  it('renders clipped text and metric items with validated positive bounds', async () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { value: 'sensor.value' } },
+      items: [
+        { id: 'text', type: 'text', x: 4, y: 8, width: 120, height: 24, text: 'Bounded text' },
+        { id: 'metric', type: 'metric', x: 4, y: 40, width: 160, height: 64, label: 'Value', value: '{{ value }}' }
+      ]
+    }
+
+    const svg = renderSvg(config, { values: { value: '42' }, states: {} })
+    expect(svg).toContain('<rect x="4" y="8" width="120" height="24" />')
+    expect(svg).toContain('<rect x="0" y="0" width="160" height="64" />')
+    await expect(sharp(Buffer.from(svg)).png().toBuffer()).resolves.toBeInstanceOf(Buffer)
+  })
+
   it('uses explicit picker runtime configuration to insert the live unit', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

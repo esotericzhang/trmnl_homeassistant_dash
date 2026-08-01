@@ -190,6 +190,7 @@ describe('server routes', () => {
       ]) {
         const response = await fetch(`${baseUrl}${path}`)
         expect(response.status).toBe(500)
+        expect(response.headers.get('content-type')).toContain('application/json')
         expect(await response.json()).toEqual({ status: 'error', message: 'Unable to render layout.' })
       }
     } finally {

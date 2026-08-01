@@ -76,6 +76,24 @@ describe('layout config', () => {
     expect(() => validateLayoutConfig(config)).toThrow('may only use valueFormat when type is metric')
   })
 
+  it('requires positive dimensions for clipped text and metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const text = config.items.find(item => item.type === 'text')!
+    text.width = 0
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${text.id} width and height must be positive`)
+
+    text.width = 1
+    const metric = config.items.find(item => item.type === 'metric')!
+    metric.height = -1
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${metric.id} width and height must be positive`)
+
+    metric.height = 1
+    const line = config.items.find(item => item.type === 'line')!
+    line.width = 0
+    line.height = -10
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+  })
+
   it('validates runtime unit sources only on metric items', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const metric = config.items.find(item => item.type === 'metric')!

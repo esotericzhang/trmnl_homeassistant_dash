@@ -524,11 +524,17 @@ app.get('/render', async (req, res) => {
 })
 
 app.get('/schedules/:id/screen.svg', async (req, res) => {
-  try { res.type('image/svg+xml').send((await renderSchedule(req.params.id, req.query.sample === '1')).svg) } catch (error) { handlePublicRenderError(error, res) }
+  try {
+    const { svg } = await renderSchedule(req.params.id, req.query.sample === '1')
+    res.type('image/svg+xml').send(svg)
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
 app.get('/schedules/:id/screen.png', async (req, res) => {
-  try { res.type('image/png').send((await renderSchedule(req.params.id, req.query.sample === '1')).png) } catch (error) { handlePublicRenderError(error, res) }
+  try {
+    const { png } = await renderSchedule(req.params.id, req.query.sample === '1')
+    res.type('image/png').send(png)
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
 app.get('/schedules/:id/render', async (req, res) => {

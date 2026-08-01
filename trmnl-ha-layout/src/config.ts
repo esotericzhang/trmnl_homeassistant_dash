@@ -66,6 +66,9 @@ function validateItem(item: LayoutItem, entities: Record<string, string>): void 
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
     throw new Error(`item ${item.id} has unsupported type ${item.type}`)
   }
+  if ((item.type === 'text' || item.type === 'metric') && (item.width <= 0 || item.height <= 0)) {
+    throw new Error(`item ${item.id} width and height must be positive`)
+  }
   const candidate = item as LayoutItem & Record<string, unknown>
   if ('valueFormat' in candidate) {
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use valueFormat when type is metric`)
