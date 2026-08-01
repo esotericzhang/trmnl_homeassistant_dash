@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Server } from 'node:http'
 import type { Settings } from '../src/config.js'
 import { loadSettings, resolveSettingsPath, saveSettings } from '../src/config.js'
@@ -150,6 +150,27 @@ describe('server routes', () => {
       body: JSON.stringify({})
     })
     expect(missing.status).toBe(404)
+  })
+
+  it('returns a sanitized server error for unexpected draft preview failures', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const saved = loadScheduleLayout(list.defaultScheduleId)
+    const send = app.response.send
+    const sendSpy = vi.spyOn(app.response, 'send').mockImplementationOnce(function () {
+      throw new Error('private renderer failure')
+    }).mockImplementation(send)
+
+    try {
+      const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(saved)
+      })
+      expect(response.status).toBe(500)
+      expect(await response.json()).toEqual({ status: 'error', message: 'Unable to render layout preview.' })
+    } finally {
+      sendSpy.mockRestore()
+    }
   })
 
   it('returns sanitized client errors for invalid persisted layout writes and rolls back combined updates', async () => {
@@ -362,6 +383,20 @@ describe('settings + terminus auth routes', () => {
     const text = await res.text()
     expect(text).toContain('discovery timed out')
     expect(text).not.toContain('ha-secret')
+  })
+
+  it('returns a sanitized gateway error for oversized discovery responses', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        return new Response('[]', { status: 200, headers: { 'Content-Length': String(2 * 1024 * 1024 + 1) } })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const response = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ status: 'error', message: 'Home Assistant returned an invalid entity response.' })
   })
 
   it('sanitizes runtime configuration failures during entity discovery', async () => {

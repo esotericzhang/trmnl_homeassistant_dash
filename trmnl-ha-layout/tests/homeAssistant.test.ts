@@ -47,4 +47,18 @@ describe('HomeAssistantClient', () => {
     await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', invalidJsonFetcher).getStates())
       .rejects.toThrow('invalid states response')
   })
+
+  it('rejects oversized state responses before processing them', async () => {
+    const oversizedHeaderFetcher = (async () => new Response('[]', {
+      status: 200,
+      headers: { 'Content-Length': String(2 * 1024 * 1024 + 1) }
+    })) as typeof fetch
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', oversizedHeaderFetcher).getStates())
+      .rejects.toThrow('invalid states response')
+
+    const tooManyStates = Array.from({ length: 10_001 }, (_, index) => ({ entity_id: `sensor.${index}`, state: 'ok', attributes: {} }))
+    const oversizedCountFetcher = (async () => new Response(JSON.stringify(tooManyStates), { status: 200 })) as typeof fetch
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', oversizedCountFetcher).getStates())
+      .rejects.toThrow('invalid states response')
+  })
 })

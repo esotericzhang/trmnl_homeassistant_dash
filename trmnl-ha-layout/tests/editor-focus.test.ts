@@ -41,7 +41,8 @@ describe('editor focus continuity', () => {
     const document = dom.window.document
     let item = document.querySelector<HTMLElement>('.item[data-id="title"]')
     let preview = item?.querySelector<HTMLElement>('.item-preview')
-    if (!item || !preview) throw new Error('saved item preview missing')
+    if (!item) throw new Error('saved item missing')
+    expect(preview).toBeNull()
 
     dispatchPointer(dom, item, 'pointerdown', 10, 10)
     dispatchPointer(dom, document.querySelector<HTMLElement>('#stage')!, 'pointermove', 35, 45)
@@ -559,6 +560,21 @@ describe('editor focus continuity', () => {
     expect(metric).not.toBeNull()
     expect(metric?.querySelector('.item-preview')).toBeNull()
     expect(document.querySelector('.item-preview.metric')).toBeNull()
+  })
+
+  it('removes a changed static text DOM preview after the draft image loads', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [], false)
+    const document = dom.window.document
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Updated title'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    expect(document.querySelector('.item[data-id="title"] .item-preview')?.textContent).toBe('Updated title')
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+
+    expectCanvasState(document, 'ready')
+    expect(document.querySelector('.item[data-id="title"] .item-preview')).toBeNull()
   })
 
   it('shows useful client previews for newly added text and sensor fields', async () => {

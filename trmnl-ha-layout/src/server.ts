@@ -275,8 +275,12 @@ app.post('/api/schedules/:id/preview', (req, res, next) => {
   try {
     validateLayoutConfig(req.body)
     res.type('svg').send(renderSvg(req.body, sampleRenderData(req.body)))
-  } catch {
-    res.status(400).json({ status: 'error', message: 'Invalid layout preview request.' })
+  } catch (error) {
+    if (error instanceof LayoutValidationError) {
+      res.status(400).json({ status: 'error', message: 'Invalid layout preview request.' })
+      return
+    }
+    res.status(500).json({ status: 'error', message: 'Unable to render layout preview.' })
   }
 })
 

@@ -1,5 +1,8 @@
 import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.js'
 
+const MAX_STATES_RESPONSE_BYTES = 2 * 1024 * 1024
+const MAX_STATES_COUNT = 10_000
+
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
 
@@ -23,11 +26,11 @@ export class HomeAssistantClient {
     if (!response.ok) throw new HomeAssistantRequestError(response.status)
     let payload: unknown
     try {
-      payload = await response.json()
+      payload = JSON.parse(await readResponseText(response, MAX_STATES_RESPONSE_BYTES))
     } catch {
       throw new HomeAssistantResponseError()
     }
-    if (!Array.isArray(payload)) throw new HomeAssistantResponseError()
+    if (!Array.isArray(payload) || payload.length > MAX_STATES_COUNT) throw new HomeAssistantResponseError()
     return payload as HassState[]
   }
 
@@ -39,6 +42,34 @@ export class HomeAssistantClient {
     const values = Object.fromEntries(entries.map(([key, state]) => [key, state.state]))
     return { values, states }
   }
+}
+
+async function readResponseText(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new HomeAssistantResponseError()
+  if (!response.body) return response.text()
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let bytes = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytes += value.byteLength
+    if (bytes > maxBytes) {
+      await reader.cancel()
+      throw new HomeAssistantResponseError()
+    }
+    chunks.push(value)
+  }
+
+  const body = new Uint8Array(bytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(body)
 }
 
 export class HomeAssistantRequestError extends Error {
