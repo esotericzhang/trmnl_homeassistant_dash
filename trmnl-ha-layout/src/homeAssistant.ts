@@ -27,7 +27,8 @@ export class HomeAssistantClient {
     let payload: unknown
     try {
       payload = JSON.parse(await readResponseText(response, MAX_STATES_RESPONSE_BYTES))
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) throw error
       throw new HomeAssistantResponseError()
     }
     if (!Array.isArray(payload) || payload.length > MAX_STATES_COUNT) throw new HomeAssistantResponseError()

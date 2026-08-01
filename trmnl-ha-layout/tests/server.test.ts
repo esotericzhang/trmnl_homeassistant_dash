@@ -385,6 +385,29 @@ describe('settings + terminus auth routes', () => {
     expect(text).not.toContain('ha-secret')
   })
 
+  it('preserves discovery timeouts raised while streaming the response body', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('['))
+            controller.error(new DOMException('timed out after headers', 'TimeoutError'))
+          }
+        }), { status: 200 })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const response = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(response.status).toBe(504)
+    const text = await response.text()
+    expect(text).toContain('discovery timed out')
+    expect(text).not.toContain('ha-secret')
+    expect(text).not.toContain('timed out after headers')
+  })
+
   it('returns a sanitized gateway error for oversized discovery responses', async () => {
     saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
     globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
