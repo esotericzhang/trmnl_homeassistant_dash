@@ -47,7 +47,10 @@ export class HomeAssistantClient {
 
 async function readResponseText(response: Response, maxBytes: number): Promise<string> {
   const contentLength = Number(response.headers.get('content-length'))
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new HomeAssistantResponseError()
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new HomeAssistantResponseError()
+  }
   if (!response.body) return response.text()
 
   const reader = response.body.getReader()
