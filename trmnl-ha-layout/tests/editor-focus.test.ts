@@ -32,7 +32,7 @@ describe('editor focus continuity', () => {
       expect(document.querySelector('textarea[name="text"]')).toBe(sameNode)
       expect(input.value).toBe(value)
       expect(document.querySelector<HTMLElement>('.item[data-id="title"] .item-preview')?.textContent).toBe(value)
-      expect(document.querySelectorAll('.item-mask')).toHaveLength(1)
+      expectCanvasState(document, 'rendering')
     }
   })
 
@@ -52,11 +52,7 @@ describe('editor focus continuity', () => {
     expect(preview?.parentElement).toBe(item)
     expect(preview?.style.width).toBe('100%')
     expect(preview?.style.height).toBe('100%')
-    const mask = document.querySelector<HTMLElement>('.item-mask')
-    expect(mask?.style.left).toBe('10px')
-    expect(mask?.style.top).toBe('10px')
-    expect(mask?.style.width).toBe('200px')
-    expect(mask?.style.height).toBe('30px')
+    expectCanvasState(document, 'rendering')
 
     const handle = item?.querySelector<HTMLElement>('.resize')
     if (!item || !handle) throw new Error('resize handle missing')
@@ -69,23 +65,21 @@ describe('editor focus continuity', () => {
     expect(preview?.parentElement).toBe(item)
     expect(preview?.style.width).toBe('100%')
     expect(preview?.style.height).toBe('100%')
-    expect(document.querySelector<HTMLElement>('.item-mask')?.style.width).toBe('200px')
-    expect(document.querySelector<HTMLElement>('.item-mask')?.style.height).toBe('30px')
+    expectCanvasState(document, 'rendering')
   })
 
-  it('masks persisted canvas content immediately when its field is deleted', async () => {
+  it('hides persisted canvas content immediately when its field is deleted', async () => {
     const dom = await editorDom()
     const document = dom.window.document
 
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
 
     expect(document.querySelector('.item[data-id="title"]')).toBeNull()
-    const mask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '10px' && element.style.top === '10px')
-    expect(mask?.style.width).toBe('200px')
-    expect(mask?.style.height).toBe('30px')
+    expectCanvasState(document, 'rendering')
+    expect(document.querySelectorAll('.item-mask')).toHaveLength(0)
   })
 
-  it('masks old text when a deleted persisted ID is reused before save', async () => {
+  it('hides old text when a deleted persisted ID is reused before save', async () => {
     const dom = await editorDom()
     const document = dom.window.document
 
@@ -97,11 +91,10 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#create-field')?.click()
 
     expect(document.querySelector('.item[data-id="title"] .item-preview')?.textContent).toBe('Title')
-    const mask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '10px' && element.style.top === '10px')
-    expect(mask).toBeDefined()
+    expectCanvasState(document, 'rendering')
   })
 
-  it('masks old text when a deleted persisted ID is reused by a manual metric', async () => {
+  it('hides old text when a deleted persisted ID is reused by a manual metric', async () => {
     const dom = await editorDom()
     const document = dom.window.document
 
@@ -116,11 +109,10 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#create-field')?.click()
 
     expect(document.querySelector('.item[data-id="title"] .item-preview.metric')?.textContent).toContain('{{ title }}')
-    const mask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '10px' && element.style.top === '10px')
-    expect(mask).toBeDefined()
+    expectCanvasState(document, 'rendering')
   })
 
-  it('keeps same-ID replacement masks until the saved server preview commits', async () => {
+  it('keeps the canvas hidden until the saved same-ID replacement commits', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, false)
     const document = dom.window.document
 
@@ -133,16 +125,15 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
 
-    const hasOldTitleMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')
-    expect(hasOldTitleMask()).toBe(true)
+    expectCanvasState(document, 'rendering')
     expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).not.toBeNull()
 
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
-    expect(hasOldTitleMask()).toBe(false)
+    expectCanvasState(document, 'ready')
     expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).toBeNull()
   })
 
-  it('keeps same-ID replacement masks when the saved server preview fails', async () => {
+  it('keeps the canvas hidden when the saved same-ID replacement fails', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, false)
     const document = dom.window.document
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
@@ -159,11 +150,11 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')).toBe(true)
+    expectCanvasState(document, 'error')
     expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).not.toBeNull()
   })
 
-  it('clears a saved replacement mask after a later clean preview commits', async () => {
+  it('restores a saved replacement after a later clean preview commits', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], false)
     const document = dom.window.document
 
@@ -177,21 +168,20 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
-    const hasOldTitleMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')
-    expect(hasOldTitleMask()).toBe(true)
+    expectCanvasState(document, 'error')
 
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
-    expect(hasOldTitleMask()).toBe(true)
+    expectCanvasState(document, 'rendering')
 
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
-    expect(hasOldTitleMask()).toBe(false)
+    expectCanvasState(document, 'ready')
     expect(document.querySelector('.item[data-id="title"] .item-preview.metric')).toBeNull()
   })
 
-  it('preserves replacement masking across schedule switches', async () => {
+  it('preserves hidden replacement state across schedule switches', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
     const document = dom.window.document
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
@@ -204,7 +194,7 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '10px')).toBe(true)
+    expectCanvasState(document, 'rendering')
   })
 
   it('restores each dirty schedule preview when regeneration fails', async () => {
@@ -258,9 +248,9 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
 
-    expect(document.querySelectorAll('.item-mask')).toHaveLength(1)
+    expectCanvasState(document, 'rendering')
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px')).toBe(false)
+    expectCanvasState(document, 'ready')
   })
 
   it('retains the prior baseline when a clean preview fails', async () => {
@@ -276,11 +266,11 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')).toBe(true)
+    expectCanvasState(document, 'error')
     expect(document.querySelector('#status')?.textContent).toContain('Preview failed')
   })
 
-  it('keeps the default bootstrap image masked when the first ordered schedule preview fails', async () => {
+  it('keeps the default bootstrap image hidden when the first ordered schedule preview fails', async () => {
     const secondLayout = structuredClone(layout)
     secondLayout.items[0].x = 80
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout, 'http://editor.local/editor', '', { defaultOrder: 1, secondOrder: 0 })
@@ -288,17 +278,16 @@ describe('editor focus continuity', () => {
 
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
-    const fullMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')
-    expect(fullMask()).toBe(true)
+    expectCanvasState(document, 'rendering')
 
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe('http://editor.local/screen.svg?sample=1')
-    expect(fullMask()).toBe(true)
+    expectCanvasState(document, 'error')
     expect(document.querySelector('#status')?.textContent).toContain('Preview failed')
   })
 
-  it('masks a prior schedule with identical items but different entities', async () => {
+  it('hides a prior schedule with identical items but different entities', async () => {
     const secondLayout = structuredClone(layout)
     secondLayout.data.entities.temperature = 'sensor.outdoor_temperature'
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], true, secondLayout)
@@ -309,13 +298,11 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('/schedules/second/screen.svg'))
 
-    const fullMask = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).find(element => element.style.left === '0px' && element.style.top === '0px')
-    expect(fullMask?.style.width).toBe('800px')
-    expect(fullMask?.style.height).toBe('480px')
+    expectCanvasState(document, 'rendering')
 
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')).toBe(true)
+    expectCanvasState(document, 'error')
   })
 
   it('ignores superseded clean preview transitions', async () => {
@@ -362,7 +349,7 @@ describe('editor focus continuity', () => {
     expect(body.items.find(item => item.id === 'sensor-text')).toBeDefined()
   })
 
-  it('preserves surviving overlapping text pixels when draft preview generation fails', async () => {
+  it('hides sparse overlapping text pixels when draft preview generation fails', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[1].x = 20
     overlapping.items[1].y = 20
@@ -372,11 +359,11 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
 
-    expect(maskCovers(document, 25, 25)).toBe(false)
-    expect(await compositedPixel(document, 25, 25, overlapping.items)).toEqual([0, 0, 0])
+    expectCanvasState(document, 'error')
+    expect(await hiddenCanvasPixel(document, 25, 25, sparseBaselineSvg(overlapping))).not.toEqual([0, 0, 0])
   })
 
-  it('preserves surviving overlapping metric pixels when replacement images fail', async () => {
+  it('hides overlapping metric pixels when replacement images fail', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[2].x = 20
     overlapping.items[2].y = 20
@@ -387,11 +374,11 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('broken'))
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
-    expect(maskCovers(document, 25, 25)).toBe(false)
-    expect(await compositedPixel(document, 25, 25, overlapping.items)).toEqual([0, 0, 0])
+    expectCanvasState(document, 'error')
+    expect(await hiddenCanvasPixel(document, 25, 25, sparseBaselineSvg(overlapping))).not.toEqual([0, 0, 0])
   })
 
-  it('redraws an unchanged earlier sensor when a later overlapping item is deleted', async () => {
+  it('keeps controls usable while an overlapping sensor canvas is hidden', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items[2].x = 20
     overlapping.items[2].y = 50
@@ -402,12 +389,12 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
 
-    expect(maskCovers(document, 25, 55)).toBe(false)
+    expectCanvasState(document, 'error')
     expect(document.querySelector('.item[data-id="sensor-text"] .item-preview')).toBeNull()
-    expect(await compositedPixel(document, 25, 55, overlapping.items)).toEqual([0, 0, 0])
+    expect(document.querySelector('.item[data-id="sensor-text"]')).not.toBeNull()
   })
 
-  it('preserves unsupported overlapping item types when preview generation fails', async () => {
+  it('hides unsupported overlapping item types when preview generation fails', async () => {
     const overlapping = structuredClone(layout)
     overlapping.items.splice(1, 0, { id: 'divider', type: 'line', x: 20, y: 20, width: 200, height: 2 })
     const dom = await editorDom(null, undefined, undefined, '', [], overlapping, false, [new Response('preview unavailable', { status: 503 })])
@@ -416,9 +403,8 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
 
-    expect(maskCovers(document, 25, 20)).toBe(false)
+    expectCanvasState(document, 'error')
     expect(document.querySelector('.item[data-id="divider"] .item-preview')).toBeNull()
-    expect(await compositedPixel(document, 25, 20, overlapping.items)).toEqual([0, 0, 0])
   })
 
   it('restores cached ownership when a clean schedule revisit preview fails', async () => {
@@ -439,10 +425,10 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(secondSrc)
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.width === '800px' && element.style.height === '480px')).toBe(false)
+    expectCanvasState(document, 'ready')
   })
 
-  it('masks content from the displayed draft when its next preview fails', async () => {
+  it('hides content from the displayed draft when its next preview fails', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
       '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
       new Response('preview unavailable', { status: 503 })
@@ -457,10 +443,10 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
 
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')).toBe(true)
+    expectCanvasState(document, 'error')
   })
 
-  it('keeps masks until a replacement draft image loads', async () => {
+  it('keeps the canvas hidden until a replacement draft image loads', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
       '<svg xmlns="http://www.w3.org/2000/svg"><text>updated</text></svg>'
     ], false)
@@ -469,14 +455,13 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
 
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('updated'))
-    const hasDeletedMask = () => Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')
-    expect(hasDeletedMask()).toBe(true)
+    expectCanvasState(document, 'rendering')
 
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
-    expect(hasDeletedMask()).toBe(false)
+    expectCanvasState(document, 'ready')
   })
 
-  it('restores the prior image and masks when a replacement image fails', async () => {
+  it('keeps the prior image hidden when a replacement image fails', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
       '<svg xmlns="http://www.w3.org/2000/svg"><text>broken</text></svg>'
     ], false)
@@ -490,8 +475,24 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('error'))
 
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(priorSrc)
-    expect(Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(element => element.style.left === '10px' && element.style.top === '50px')).toBe(true)
+    expectCanvasState(document, 'error')
     expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed')
+  })
+
+  it('retries a failed draft preview and restores the canvas atomically', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
+      new Response('preview unavailable', { status: 503 }),
+      '<svg xmlns="http://www.w3.org/2000/svg"><text>recovered</text></svg>'
+    ], false)
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expectCanvasState(document, 'error'))
+
+    document.querySelector<HTMLButtonElement>('#retry-preview')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('recovered'))
+    expectCanvasState(document, 'rendering')
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expectCanvasState(document, 'ready')
   })
 
   it('debounces layout previews and skips schedule metadata changes', async () => {
@@ -599,7 +600,7 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
     preview = document.querySelector<HTMLElement>('.item[data-id="kitchen-temperature"] .item-preview.metric')
     expect(preview?.textContent).toContain('21.5 °C')
-    expect(document.querySelectorAll('.item-mask').length).toBeGreaterThan(0)
+    expectCanvasState(document, 'rendering')
 
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
@@ -963,19 +964,22 @@ function dispatchPointer(dom: JSDOM, target: HTMLElement, type: string, clientX:
   target.dispatchEvent(event)
 }
 
-function maskCovers(document: Document, x: number, y: number): boolean {
-  return Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).some(mask => {
-    const left = Number.parseFloat(mask.style.left)
-    const top = Number.parseFloat(mask.style.top)
-    return x >= left && x < left + Number.parseFloat(mask.style.width) && y >= top && y < top + Number.parseFloat(mask.style.height)
-  })
+function expectCanvasState(document: Document, state: 'ready' | 'rendering' | 'error'): void {
+  expect(document.querySelector('#stage')?.classList.contains('canvas-hidden')).toBe(state !== 'ready')
+  expect(document.querySelector('#canvas-state')?.classList.contains('show')).toBe(state !== 'ready')
+  expect((document.querySelector<HTMLButtonElement>('#retry-preview')?.hidden)).toBe(state !== 'error')
 }
 
-async function compositedPixel(document: Document, x: number, y: number, items: LayoutConfig['items'] = layout.items): Promise<number[]> {
-  const baseline = items.map(item => `<rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" fill="black"/>`).join('')
-  const masks = Array.from(document.querySelectorAll<HTMLElement>('.item-mask')).map(mask => `<rect x="${Number.parseFloat(mask.style.left)}" y="${Number.parseFloat(mask.style.top)}" width="${Number.parseFloat(mask.style.width)}" height="${Number.parseFloat(mask.style.height)}" fill="white"/>`).join('')
-  const redraws = Array.from(document.querySelectorAll<HTMLElement>('.item')).filter(item => item.querySelector('.item-preview')).map(item => `<rect x="${Number.parseFloat(item.style.left)}" y="${Number.parseFloat(item.style.top)}" width="${Number.parseFloat(item.style.width)}" height="${Number.parseFloat(item.style.height)}" fill="black"/>`).join('')
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480"><rect width="800" height="480" fill="white"/>${baseline}${masks}${redraws}</svg>`
+function sparseBaselineSvg(config: LayoutConfig): string {
+  const items = config.items.map(item => item.type === 'line'
+    ? `<line x1="${item.x}" y1="${item.y}" x2="${item.x + item.width}" y2="${item.y}" stroke="black"/>`
+    : `<text x="${item.x}" y="${item.y + 18}" font-family="Arial" font-size="18">${item.id}</text>`).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480"><rect width="800" height="480" fill="white"/>${items}</svg>`
+}
+
+async function hiddenCanvasPixel(document: Document, x: number, y: number, baseline: string): Promise<number[]> {
+  const hidden = document.querySelector('#stage')?.classList.contains('canvas-hidden')
+  const svg = hidden ? '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480"><rect width="800" height="480" fill="#e7eaee"/></svg>' : baseline
   const image = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer({ resolveWithObject: true })
   const offset = (y * image.info.width + x) * 3
   return Array.from(image.data.subarray(offset, offset + 3))
