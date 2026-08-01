@@ -35,7 +35,7 @@ describe('layout config', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const metric = config.items.find((item) => item.type === 'metric')
     if (!metric || metric.type !== 'metric') throw new Error('metric item missing')
-    metric.previewSource = 'temperature'
+    metric.previewSource = 'minutesAsleep'
     metric.previewState = '21.5'
     metric.previewUnit = '°C'
 
@@ -98,6 +98,19 @@ describe('layout config', () => {
     expect(() => validateLayoutConfig(config)).toThrow('unitSource is not referenced by value')
 
     Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep | raw }}' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+  })
+
+  it('requires preview sources to be configured and referenced by the metric value', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { previewSource: 'missing', previewState: '21.5', value: '{{ missing }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('previewSource is not configured in data.entities')
+
+    Object.assign(metric, { previewSource: 'minutesAsleep', value: '{{ minutesAwake }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('previewSource is not referenced by value')
+
+    Object.assign(metric, { previewSource: 'minutesAsleep', value: '{{ minutesAsleep | raw }}' })
     expect(() => validateLayoutConfig(config)).not.toThrow()
   })
 })

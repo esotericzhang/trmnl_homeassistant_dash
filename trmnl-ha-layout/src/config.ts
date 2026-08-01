@@ -76,12 +76,7 @@ function validateItem(item: LayoutItem, entities: Record<string, string>): void 
   if ('unitSource' in candidate) {
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use unitSource when type is metric`)
     if (typeof candidate.unitSource !== 'string' || !candidate.unitSource) throw new Error(`item ${item.id} has invalid unitSource`)
-    if (!Object.prototype.hasOwnProperty.call(entities, candidate.unitSource)) {
-      throw new Error(`item ${item.id} unitSource is not configured in data.entities`)
-    }
-    const referenced = typeof item.value === 'string'
-      && Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*[\w-]+)?\s*}}/g), match => match[1]).includes(candidate.unitSource)
-    if (!referenced) throw new Error(`item ${item.id} unitSource is not referenced by value`)
+    validateMetricSource(item, entities, 'unitSource', candidate.unitSource)
   }
   for (const key of ['previewSource', 'previewState', 'previewUnit'] as const) {
     if (!(key in candidate)) continue
@@ -91,6 +86,22 @@ function validateItem(item: LayoutItem, entities: Record<string, string>): void 
   if (item.type === 'metric' && ('previewState' in candidate || 'previewUnit' in candidate) && !candidate.previewSource) {
     throw new Error(`item ${item.id} preview snapshot requires previewSource`)
   }
+  if (item.type === 'metric' && typeof candidate.previewSource === 'string') {
+    validateMetricSource(item, entities, 'previewSource', candidate.previewSource)
+  }
+}
+
+function validateMetricSource(
+  item: Extract<LayoutItem, { type: 'metric' }>,
+  entities: Record<string, string>,
+  field: 'unitSource' | 'previewSource',
+  source: string
+): void {
+  if (!Object.prototype.hasOwnProperty.call(entities, source)) {
+    throw new Error(`item ${item.id} ${field} is not configured in data.entities`)
+  }
+  const referenced = Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*[\w-]+)?\s*}}/g), match => match[1]).includes(source)
+  if (!referenced) throw new Error(`item ${item.id} ${field} is not referenced by value`)
 }
 
 export function getRuntimeConfig() {
