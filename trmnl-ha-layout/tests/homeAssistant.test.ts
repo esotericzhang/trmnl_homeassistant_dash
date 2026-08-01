@@ -51,7 +51,7 @@ describe('HomeAssistantClient', () => {
   it('rejects oversized state responses before processing them', async () => {
     const oversizedHeaderFetcher = (async () => new Response('[]', {
       status: 200,
-      headers: { 'Content-Length': String(2 * 1024 * 1024 + 1) }
+      headers: { 'Content-Length': String(16 * 1024 * 1024 + 1) }
     })) as typeof fetch
     await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', oversizedHeaderFetcher).getStates())
       .rejects.toThrow('invalid states response')
@@ -59,6 +59,16 @@ describe('HomeAssistantClient', () => {
     const tooManyStates = Array.from({ length: 10_001 }, (_, index) => ({ entity_id: `sensor.${index}`, state: 'ok', attributes: {} }))
     const oversizedCountFetcher = (async () => new Response(JSON.stringify(tooManyStates), { status: 200 })) as typeof fetch
     await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', oversizedCountFetcher).getStates())
+      .rejects.toThrow('invalid states response')
+  })
+
+  it('accepts attribute-heavy discovery responses within the configured limit', async () => {
+    const payload = JSON.stringify([{ entity_id: 'sensor.large', state: 'ok', attributes: { metadata: 'x'.repeat(2 * 1024 * 1024) } }])
+    const fetcher = (async () => new Response(payload, { status: 200 })) as typeof fetch
+
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', fetcher).getStates())
+      .resolves.toMatchObject([{ entity_id: 'sensor.large', state: 'ok' }])
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', fetcher).getStates(undefined, payload.length - 1))
       .rejects.toThrow('invalid states response')
   })
 })

@@ -346,7 +346,8 @@ app.get('/api/home-assistant/entities', async (req, res) => {
       res.status(400).json({ status: 'error', message: 'Home Assistant credentials are not configured. Add a long-lived token in Global connection.' })
       return
     }
-    const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken).getStates(AbortSignal.timeout(10_000))
+    const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken)
+      .getStates(AbortSignal.timeout(10_000), config.homeAssistantStatesMaxBytes)
     const entities = states
       .filter(validHassState)
       .map(entitySummary)

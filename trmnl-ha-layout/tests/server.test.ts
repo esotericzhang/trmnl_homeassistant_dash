@@ -412,7 +412,7 @@ describe('settings + terminus auth routes', () => {
     saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
     globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
       if (String(url) === 'http://ha.local:8123/api/states') {
-        return new Response('[]', { status: 200, headers: { 'Content-Length': String(2 * 1024 * 1024 + 1) } })
+        return new Response('[]', { status: 200, headers: { 'Content-Length': String(16 * 1024 * 1024 + 1) } })
       }
       return originalFetch(url, init)
     }) as typeof fetch

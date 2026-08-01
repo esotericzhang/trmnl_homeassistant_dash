@@ -169,6 +169,17 @@ describe('env-overrides-settings precedence', () => {
     expect(terminusOptionsFromEnv().publicBaseUrl).toBe('http://addon-env.local:10000')
   })
 
+  it('uses and validates the Home Assistant discovery response limit', () => {
+    delete process.env.HOME_ASSISTANT_STATES_MAX_BYTES
+    expect(getRuntimeConfig().homeAssistantStatesMaxBytes).toBe(16 * 1024 * 1024)
+
+    process.env.HOME_ASSISTANT_STATES_MAX_BYTES = '33554432'
+    expect(getRuntimeConfig().homeAssistantStatesMaxBytes).toBe(32 * 1024 * 1024)
+
+    process.env.HOME_ASSISTANT_STATES_MAX_BYTES = '0'
+    expect(() => getRuntimeConfig()).toThrow('HOME_ASSISTANT_STATES_MAX_BYTES must be a positive integer')
+  })
+
   it('legacy PUBLIC_BASE_URL still works when ADDON_BASE_URL is absent', () => {
     delete process.env.ADDON_BASE_URL
     process.env.PUBLIC_BASE_URL = 'http://public-env.local:10000'

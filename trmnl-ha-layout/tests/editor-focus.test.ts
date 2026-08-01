@@ -769,6 +769,35 @@ describe('editor focus continuity', () => {
     expect(metric).not.toHaveProperty('unitSource')
   })
 
+  it('preserves metric bindings while value edits still reference their source', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')
+    if (!value) throw new Error('metric value input missing')
+    value.value = '{{ temperature }} indoors'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).toMatchObject({
+      value: '{{ temperature }} indoors',
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+  })
+
   it('shows discovery failures while preserving manual entity creation', async () => {
     const dom = await editorDom(null, undefined, { status: 401, message: 'Home Assistant rejected the configured credentials (401).' })
     const document = dom.window.document

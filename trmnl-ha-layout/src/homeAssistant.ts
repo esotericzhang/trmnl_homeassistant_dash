@@ -1,6 +1,6 @@
 import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.js'
 
-const MAX_STATES_RESPONSE_BYTES = 2 * 1024 * 1024
+const DEFAULT_MAX_STATES_RESPONSE_BYTES = 16 * 1024 * 1024
 const MAX_STATES_COUNT = 10_000
 
 export class HomeAssistantClient {
@@ -17,7 +17,7 @@ export class HomeAssistantClient {
     return response.json() as Promise<HassState>
   }
 
-  async getStates(signal?: AbortSignal): Promise<HassState[]> {
+  async getStates(signal?: AbortSignal, maxResponseBytes = DEFAULT_MAX_STATES_RESPONSE_BYTES): Promise<HassState[]> {
     if (!this.token) throw new Error('Missing Home Assistant token')
     const response = await this.fetcher(new URL('/api/states', this.baseUrl), {
       headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
@@ -26,7 +26,7 @@ export class HomeAssistantClient {
     if (!response.ok) throw new HomeAssistantRequestError(response.status)
     let payload: unknown
     try {
-      payload = JSON.parse(await readResponseText(response, MAX_STATES_RESPONSE_BYTES))
+      payload = JSON.parse(await readResponseText(response, maxResponseBytes))
     } catch (error) {
       if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) throw error
       throw new HomeAssistantResponseError()

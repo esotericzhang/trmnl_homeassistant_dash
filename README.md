@@ -110,6 +110,7 @@ Set `SETTINGS_TOKEN` or the add-on `settings_token` option to protect mutating e
 
 - `HOME_ASSISTANT_URL`: Home Assistant base URL, for example `http://homeassistant:8123`.
 - `ACCESS_TOKEN` or `HA_TOKEN`: Home Assistant long-lived token.
+- `HOME_ASSISTANT_STATES_MAX_BYTES`: Maximum `/api/states` discovery response size in bytes; defaults to 16 MiB. The add-on option is `home_assistant_states_max_bytes`.
 - `LAYOUT_PATH`: Optional legacy layout path used as first-run migration input and to locate the persistent settings/schedules directory. After migration, active layouts are stored under `schedules/<schedule-id>/layout.yaml` beside it.
 - `ADDON_BASE_URL`: Add-on URL Terminus can use to fetch this dashboard's `/screen.png` in `byos-uri` mode. `PUBLIC_BASE_URL` remains supported as a legacy alias.
 - `TERMINUS_API_URL`: Terminus base URL, for example `http://terminus:2300`.

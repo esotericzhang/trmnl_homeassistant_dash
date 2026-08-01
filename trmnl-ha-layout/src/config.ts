@@ -5,6 +5,7 @@ import type { LayoutConfig, LayoutItem } from './types.js'
 
 const projectDefault = path.resolve(process.cwd(), 'data/default-layout.yaml')
 const addonDefault = '/data/layout.yaml'
+const DEFAULT_HOME_ASSISTANT_STATES_MAX_BYTES = 16 * 1024 * 1024
 
 export class LayoutValidationError extends Error {}
 
@@ -118,6 +119,10 @@ export function getRuntimeConfig() {
     port: Number(process.env.PORT ?? 10000),
     homeAssistantUrl: envString('HOME_ASSISTANT_URL') ?? stringOption(options, 'home_assistant_url') ?? settings.homeAssistantUrl ?? 'http://homeassistant:8123',
     accessToken: envString('ACCESS_TOKEN') ?? envString('HA_TOKEN') ?? stringOption(options, 'access_token') ?? settings.haToken ?? '',
+    homeAssistantStatesMaxBytes: positiveInteger(
+      process.env.HOME_ASSISTANT_STATES_MAX_BYTES ?? numberOption(options, 'home_assistant_states_max_bytes') ?? DEFAULT_HOME_ASSISTANT_STATES_MAX_BYTES,
+      'HOME_ASSISTANT_STATES_MAX_BYTES'
+    ),
     publicBaseUrl: resolveAddonBaseUrl(options, settings.publicBaseUrl),
     refreshIntervalSeconds: Number(process.env.REFRESH_INTERVAL_SECONDS ?? numberOption(options, 'refresh_interval_seconds') ?? settings.refreshIntervalSeconds ?? 0)
   }
@@ -150,6 +155,12 @@ export function stringOption(options: Record<string, unknown>, key: string): str
 export function numberOption(options: Record<string, unknown>, key: string): number | undefined {
   const value = options[key]
   return typeof value === 'number' ? value : undefined
+}
+
+function positiveInteger(value: string | number, name: string): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${name} must be a positive integer`)
+  return parsed
 }
 
 export const TERMINUS_MODES = ['screen-content', 'byos-uri', 'byos-base64', 'raw-webhook'] as const
