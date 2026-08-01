@@ -488,7 +488,13 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('#delete-field')?.click()
     await vi.waitFor(() => expectCanvasState(document, 'error'))
 
-    document.querySelector<HTMLButtonElement>('#retry-preview')?.click()
+    const canvasState = document.querySelector<HTMLElement>('#canvas-state')!
+    const overlay = document.querySelector<HTMLElement>('#overlay')!
+    const retry = document.querySelector<HTMLButtonElement>('#retry-preview')!
+    expect(Number(dom.window.getComputedStyle(canvasState).zIndex)).toBeGreaterThan(Number(dom.window.getComputedStyle(overlay).zIndex))
+    dispatchPointer(dom, retry, 'pointerdown', 400, 240)
+    dispatchPointer(dom, retry, 'pointerup', 400, 240)
+    retry.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 400, clientY: 240 }))
     await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('recovered'))
     expectCanvasState(document, 'rendering')
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
