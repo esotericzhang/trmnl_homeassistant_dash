@@ -501,6 +501,32 @@ describe('editor focus continuity', () => {
     expectCanvasState(document, 'ready')
   })
 
+  it('keeps retry reachable when the last item deletion preview fails', async () => {
+    const singleItemLayout: LayoutConfig = { ...layout, items: [layout.items[0]] }
+    const dom = await editorDom(null, undefined, undefined, '', [], singleItemLayout, false, [
+      new Response('preview unavailable', { status: 503 }),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480"></svg>'
+    ], false)
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expectCanvasState(document, 'error'))
+
+    const stage = document.querySelector<HTMLElement>('#stage')!
+    const emptyStage = document.querySelector<HTMLElement>('#empty-stage')!
+    const retry = document.querySelector<HTMLButtonElement>('#retry-preview')!
+    expect(stage.style.display).toBe('block')
+    expect(emptyStage.classList.contains('show')).toBe(false)
+    dispatchPointer(dom, retry, 'pointerdown', 400, 240)
+    dispatchPointer(dom, retry, 'pointerup', 400, 240)
+    retry.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 400, clientY: 240 }))
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+
+    expectCanvasState(document, 'ready')
+    expect(stage.style.display).toBe('none')
+    expect(emptyStage.classList.contains('show')).toBe(true)
+  })
+
   it('debounces layout previews and skips schedule metadata changes', async () => {
     const dom = await editorDom()
     const document = dom.window.document

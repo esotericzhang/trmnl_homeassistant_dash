@@ -79,12 +79,25 @@ describe('layout config', () => {
   it('validates runtime unit sources only on metric items', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const metric = config.items.find(item => item.type === 'metric')!
-    Object.assign(metric, { unitSource: 'temperature' })
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep }}' })
     expect(() => validateLayoutConfig(config)).not.toThrow()
     Object.assign(metric, { unitSource: '' })
     expect(() => validateLayoutConfig(config)).toThrow('invalid unitSource')
     const text = config.items.find(item => item.type === 'text')!
     Object.assign(text, { unitSource: 'temperature' })
     expect(() => validateLayoutConfig(config)).toThrow('may only use unitSource when type is metric')
+  })
+
+  it('requires runtime unit sources to be configured and referenced by the metric value', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { unitSource: 'missing', value: '{{ missing }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('unitSource is not configured in data.entities')
+
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAwake }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('unitSource is not referenced by value')
+
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep | raw }}' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
   })
 })

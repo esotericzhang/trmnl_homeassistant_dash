@@ -52,14 +52,14 @@ export function validateLayoutConfig(config: LayoutConfig): void {
         throw new Error(`frame.${key} must be a positive number`)
       }
     }
-    config.items.forEach(validateItem)
+    config.items.forEach(item => validateItem(item, config.data.entities))
   } catch (error) {
     if (error instanceof LayoutValidationError) throw error
     throw new LayoutValidationError(error instanceof Error ? error.message : String(error))
   }
 }
 
-function validateItem(item: LayoutItem): void {
+function validateItem(item: LayoutItem, entities: Record<string, string>): void {
   for (const key of ['x', 'y', 'width', 'height'] as const) {
     if (!Number.isFinite(item[key])) throw new Error(`item ${item.id} has invalid ${key}`)
   }
@@ -76,6 +76,12 @@ function validateItem(item: LayoutItem): void {
   if ('unitSource' in candidate) {
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use unitSource when type is metric`)
     if (typeof candidate.unitSource !== 'string' || !candidate.unitSource) throw new Error(`item ${item.id} has invalid unitSource`)
+    if (!Object.prototype.hasOwnProperty.call(entities, candidate.unitSource)) {
+      throw new Error(`item ${item.id} unitSource is not configured in data.entities`)
+    }
+    const referenced = typeof item.value === 'string'
+      && Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*[\w-]+)?\s*}}/g), match => match[1]).includes(candidate.unitSource)
+    if (!referenced) throw new Error(`item ${item.id} unitSource is not referenced by value`)
   }
   for (const key of ['previewSource', 'previewState', 'previewUnit'] as const) {
     if (!(key in candidate)) continue
