@@ -183,6 +183,14 @@ function handleLayoutWriteError(error: unknown, res: express.Response, next: exp
   handleScheduleError(error, res, next)
 }
 
+function handlePublicRenderError(error: unknown, res: express.Response): void {
+  if (scheduleNotFound(error)) {
+    res.status(404).json({ status: 'error', message: (error as Error).message })
+    return
+  }
+  res.status(500).json({ status: 'error', message: 'Unable to render layout.' })
+}
+
 function scheduleForApi(schedule: Schedule): Schedule {
   return {
     ...schedule,
@@ -494,40 +502,40 @@ app.delete('/api/terminus/tokens', (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-app.get('/screen.svg', async (req, res, next) => {
+app.get('/screen.svg', async (req, res) => {
   try {
     const { svg } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('image/svg+xml').send(svg)
-  } catch (error) { next(error) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/screen.png', async (req, res, next) => {
+app.get('/screen.png', async (req, res) => {
   try {
     const { png } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('image/png').send(png)
-  } catch (error) { next(error) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/render', async (req, res, next) => {
+app.get('/render', async (req, res) => {
   try {
     const { layout, svg } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('html').send(renderHtml(layout, svg))
-  } catch (error) { next(error) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/schedules/:id/screen.svg', async (req, res, next) => {
-  try { res.type('image/svg+xml').send((await renderSchedule(req.params.id, req.query.sample === '1')).svg) } catch (error) { handleScheduleError(error, res, next) }
+app.get('/schedules/:id/screen.svg', async (req, res) => {
+  try { res.type('image/svg+xml').send((await renderSchedule(req.params.id, req.query.sample === '1')).svg) } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/schedules/:id/screen.png', async (req, res, next) => {
-  try { res.type('image/png').send((await renderSchedule(req.params.id, req.query.sample === '1')).png) } catch (error) { handleScheduleError(error, res, next) }
+app.get('/schedules/:id/screen.png', async (req, res) => {
+  try { res.type('image/png').send((await renderSchedule(req.params.id, req.query.sample === '1')).png) } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/schedules/:id/render', async (req, res, next) => {
+app.get('/schedules/:id/render', async (req, res) => {
   try {
     const { layout, svg } = await renderSchedule(req.params.id, req.query.sample === '1')
     res.type('html').send(renderHtml(layout, svg))
-  } catch (error) { handleScheduleError(error, res, next) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
 app.get('/', (_req, res) => {

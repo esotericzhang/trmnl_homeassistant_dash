@@ -113,4 +113,22 @@ describe('layout config', () => {
     Object.assign(metric, { previewSource: 'minutesAsleep', value: '{{ minutesAsleep | raw }}' })
     expect(() => validateLayoutConfig(config)).not.toThrow()
   })
+
+  it('requires preview and runtime unit sources to match when both are present', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, {
+      value: '{{ minutesAsleep }} / {{ minutesAwake }}',
+      previewSource: 'minutesAsleep',
+      previewState: '125',
+      previewUnit: 'min',
+      unitSource: 'minutesAwake'
+    })
+    expect(() => validateLayoutConfig(config)).toThrow('previewSource and unitSource must match')
+
+    delete (metric as { unitSource?: string }).unitSource
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+    Object.assign(metric, { unitSource: 'minutesAsleep' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+  })
 })

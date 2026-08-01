@@ -419,7 +419,7 @@ describe('renderer', () => {
 
   it('defines each core editor function once without layered reassignment', () => {
     const html = renderEditorHtml()
-    for (const name of ['api', 'setAddMode', 'selectHomeAssistantEntity', 'renderOverlay', 'loadActiveConfig', 'fieldHtml', 'refreshPreview', 'refreshDraftPreview', 'metricPreviewText']) {
+    for (const name of ['api', 'setAddMode', 'selectHomeAssistantEntity', 'renderOverlay', 'loadActiveConfig', 'fieldHtml', 'refreshPreview', 'refreshDraftPreview', 'metricPreviewText', 'patchSchedule', 'renameSchedule', 'toggleSchedule']) {
       expect(html.match(new RegExp(`(?:async )?function ${name}\\(`, 'g'))).toHaveLength(1)
       expect(html).not.toMatch(new RegExp(`${name}\\s*=`))
     }

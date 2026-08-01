@@ -89,6 +89,10 @@ function validateItem(item: LayoutItem, entities: Record<string, string>): void 
   if (item.type === 'metric' && typeof candidate.previewSource === 'string') {
     validateMetricSource(item, entities, 'previewSource', candidate.previewSource)
   }
+  if (item.type === 'metric' && typeof candidate.previewSource === 'string' && typeof candidate.unitSource === 'string'
+    && candidate.previewSource !== candidate.unitSource) {
+    throw new Error(`item ${item.id} previewSource and unitSource must match`)
+  }
 }
 
 function validateMetricSource(

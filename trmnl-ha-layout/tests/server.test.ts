@@ -177,6 +177,30 @@ describe('server routes', () => {
     expect(currentSchedule.name).toBe(originalSchedule.name)
   })
 
+  it('sanitizes malformed layouts on every public render route', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    const layoutPath = resolveScheduleLayoutPath(scheduleId)
+    const original = fs.readFileSync(layoutPath, 'utf8')
+    fs.writeFileSync(layoutPath, 'items:\n  - previewState: private malformed snapshot\n    value: [', 'utf8')
+
+    try {
+      for (const path of [
+        '/screen.svg?sample=1', '/screen.png?sample=1', '/render?sample=1',
+        `/schedules/${scheduleId}/screen.svg?sample=1`, `/schedules/${scheduleId}/screen.png?sample=1`, `/schedules/${scheduleId}/render?sample=1`
+      ]) {
+        const response = await fetch(`${baseUrl}${path}`)
+        expect(response.status).toBe(500)
+        expect(await response.json()).toEqual({ status: 'error', message: 'Unable to render layout.' })
+      }
+    } finally {
+      fs.writeFileSync(layoutPath, original, 'utf8')
+    }
+
+    for (const path of ['/schedules/missing/screen.svg', '/schedules/missing/screen.png', '/schedules/missing/render']) {
+      expect((await fetch(`${baseUrl}${path}`)).status).toBe(404)
+    }
+  })
+
   it('masks schedule webhook URLs and rejects client-owned status updates', async () => {
     const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
     await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`, {
@@ -365,6 +389,7 @@ describe('settings + terminus auth routes', () => {
     const scheduleId = loadSchedulesIndex().defaultScheduleId
     const original = loadScheduleLayout(scheduleId)
     const snapshot = structuredClone(original)
+    snapshot.data.entities.private = 'sensor.private'
     snapshot.items.push({
       id: 'private-preview', type: 'metric', x: 0, y: 0, width: 100, height: 60,
       label: 'Private', value: '{{ private }}', previewSource: 'private', previewState: 'locked', previewUnit: 'secret'
