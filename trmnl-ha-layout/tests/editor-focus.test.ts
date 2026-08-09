@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import sharp from 'sharp'
-import { renderEditorHtml } from '../src/render.js'
+import { editorPreviewRenderData } from '../src/homeAssistant.js'
+import { renderEditorHtml, renderSvg } from '../src/render.js'
 import type { LayoutConfig } from '../src/types.js'
 
 const layout: LayoutConfig = {
@@ -639,16 +640,13 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLButtonElement>('.entity-option')?.click()
     document.querySelector<HTMLButtonElement>('#create-field')?.click()
 
-    let preview = document.querySelector<HTMLElement>('.item[data-id="kitchen-temperature"] .item-preview.metric')
+    const preview = document.querySelector<HTMLElement>('.item[data-id="kitchen-temperature"] .item-preview.metric')
     expect(preview?.textContent).toContain('Kitchen Temperature')
     expect(preview?.textContent).toContain('21.5 °C')
     expect(preview?.textContent).not.toContain('{{ kitchenTemperature }}')
 
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
-    preview = document.querySelector<HTMLElement>('.item[data-id="kitchen-temperature"] .item-preview.metric')
-    expect(preview?.textContent).toContain('21.5 °C')
-    expectCanvasState(document, 'rendering')
 
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
@@ -660,6 +658,31 @@ describe('editor focus continuity', () => {
       previewState: '21.5',
       previewUnit: '°C'
     })
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(document.querySelector('.item[data-id="kitchen-temperature"] .item-preview.metric')).toBeNull()
+    expect(decodeURIComponent(document.querySelector<HTMLImageElement>('#preview-frame')!.src)).toContain('21.5 °C')
+  })
+
+  it('does not mistake short units for letters inside ordinary prose', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} Current', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: 'C' })
+    const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} Current room'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    const saveCallBefore = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(saveCallBefore))
+    const saveCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(call => {
+      const [input, options] = call as [string | URL | Request, RequestInit?]
+      return new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT'
+    })
+    const saveCall = saveCalls[saveCalls.length - 1]
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).toHaveProperty('unitSource', 'temperature')
   })
 
   it('removes metric snapshot overlays after the draft SVG commits', async () => {
@@ -667,13 +690,17 @@ describe('editor focus continuity', () => {
     Object.assign(snapshotLayout.items[2], { unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout, false, [], false)
     const document = dom.window.document
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    const committedSvg = decodeURIComponent(document.querySelector<HTMLImageElement>('#preview-frame')?.src || '')
     document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
     const label = document.querySelector<HTMLTextAreaElement>('textarea[name="label"]')!
     label.value = 'Room temperature'
     label.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
 
-    expect(document.querySelector('.item[data-id="temperature"] .item-preview.metric')).not.toBeNull()
-    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    await vi.waitFor(() => expect(document.querySelector('.item[data-id="temperature"] .item-preview.metric')).not.toBeNull())
+    await vi.waitFor(() => expect(decodeURIComponent(document.querySelector<HTMLImageElement>('#preview-frame')?.src || '')).toContain('Room temperature'))
+    expect(committedSvg).not.toContain('Room temperature')
     document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
     expect(document.querySelector('.item[data-id="temperature"] .item-preview.metric')).toBeNull()
   })
@@ -1049,7 +1076,8 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
       if (previewResponse instanceof Response) return previewResponse
       if (typeof previewResponse === 'string') return new Response(previewResponse, { status: 200, headers: { 'Content-Type': 'image/svg+xml' } })
       if (secondSchedule) return new Response('preview unavailable', { status: 503 })
-      return new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>', { status: 200, headers: { 'Content-Type': 'image/svg+xml' } })
+      const previewLayout = options?.body ? JSON.parse(String(options.body)) as LayoutConfig : initialLayout
+      return new Response(renderSvg(previewLayout, editorPreviewRenderData(previewLayout)), { status: 200, headers: { 'Content-Type': 'image/svg+xml' } })
     }
     const body = responses.get(path)
     return new Response(JSON.stringify(body), { status: body ? 200 : 404, headers: { 'Content-Type': 'application/json' } })

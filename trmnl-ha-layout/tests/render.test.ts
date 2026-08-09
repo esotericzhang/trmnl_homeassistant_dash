@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
 import { loadLayoutConfig } from '../src/config.js'
 import { sampleRenderData } from '../src/homeAssistant.js'
-import { renderEditorHtml, renderSvg } from '../src/render.js'
+import { renderEditorHtml, renderPng, renderSvg } from '../src/render.js'
 import type { LayoutConfig, RenderData } from '../src/types.js'
 
 describe('renderer', () => {
@@ -246,6 +246,31 @@ describe('renderer', () => {
     expect(svg).not.toContain('2h 15m min')
   })
 
+  it('exports a sleep-minutes sensor as text and a light metric card, not a black square', async () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { sleepMinutes: 'sensor.sleep_minutes' } },
+      items: [{
+        id: 'sleep-minutes', type: 'metric', x: 24, y: 32, width: 180, height: 62,
+        label: 'Sleep', value: '{{ sleepMinutes }}', valueFormat: 'duration-minutes',
+        unitSource: 'sleepMinutes', previewSource: 'sleepMinutes', previewState: '135', previewUnit: 'min'
+      }]
+    }
+    const data: RenderData = {
+      values: { sleepMinutes: '135' },
+      states: { sleepMinutes: { entity_id: 'sensor.sleep_minutes', state: '135', attributes: { unit_of_measurement: 'min' } } }
+    }
+
+    const svg = renderSvg(config, data)
+    expect(svg).toContain('>2h 15m</text>')
+    expect(svg).toContain('fill="#f7f7f7"')
+
+    const png = await renderPng(config, svg)
+    expect(Array.from(png.subarray(0, 8))).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
+    const cardStats = await sharp(png).extract({ left: 25, top: 33, width: 178, height: 60 }).stats()
+    expect(cardStats.channels.slice(0, 3).every(channel => channel.mean > 150)).toBe(true)
+  })
+
   it('applies named metric duration formatting to runtime values', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
@@ -475,6 +500,7 @@ describe('renderer', () => {
     expect(html).toContain("{method:'DELETE'}")
     expect(html).toContain('id="schedule-webhook"')
     expect(html).toContain("'/schedules/'+encodeURIComponent(id)+'/screen.svg")
+    expect(html).toContain("api('/api/schedules/'+encodeURIComponent(id)+'/preview'")
     expect(html).toContain("if(draft()?.dirty&&!await saveActive())return")
     expect(html).toContain('d.loadedSchedule=clone(target)')
   })
