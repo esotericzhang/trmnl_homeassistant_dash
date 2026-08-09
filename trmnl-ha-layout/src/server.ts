@@ -16,7 +16,7 @@ import {
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
-import { HomeAssistantClient, HomeAssistantRequestError, HomeAssistantResponseError, sampleRenderData } from './homeAssistant.js'
+import { editorPreviewRenderData, HomeAssistantClient, HomeAssistantRequestError, HomeAssistantResponseError, sampleRenderData } from './homeAssistant.js'
 import { renderEditorHtml, renderHtml, renderPng, renderSvg } from './render.js'
 import { createScheduleCoordinator } from './scheduler.js'
 import { legacyScheduleTerminusOverrides, TerminusClient, terminusOptionsFromEnv } from './terminus.js'
@@ -274,7 +274,7 @@ app.post('/api/schedules/:id/preview', (req, res, next) => {
   }
   try {
     validateLayoutConfig(req.body)
-    res.type('svg').send(renderSvg(req.body, sampleRenderData(req.body)))
+    res.type('svg').send(renderSvg(req.body, editorPreviewRenderData(req.body)))
   } catch (error) {
     if (error instanceof LayoutValidationError) {
       res.status(400).json({ status: 'error', message: 'Invalid layout preview request.' })
@@ -339,6 +339,13 @@ app.get('/api/settings', (_req, res, next) => {
 })
 
 app.get('/api/home-assistant/entities', async (req, res) => {
+  const disconnected = new AbortController()
+  const timeout = AbortSignal.timeout(10_000)
+  const abortDisconnected = () => {
+    if (!res.writableEnded) disconnected.abort()
+  }
+  req.once('aborted', abortDisconnected)
+  res.once('close', abortDisconnected)
   try {
     if (!requireMutationAuth(req, res)) return
     const config = await currentRuntime()
@@ -347,7 +354,7 @@ app.get('/api/home-assistant/entities', async (req, res) => {
       return
     }
     const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken)
-      .getStates(AbortSignal.timeout(10_000), config.homeAssistantStatesMaxBytes)
+      .getStates(AbortSignal.any([timeout, disconnected.signal]), config.homeAssistantStatesMaxBytes)
     const entities = states
       .filter(validHassState)
       .map(entitySummary)
@@ -356,6 +363,7 @@ app.get('/api/home-assistant/entities', async (req, res) => {
         || left.entityId.localeCompare(right.entityId))
     res.json({ entities })
   } catch (error) {
+    if (disconnected.signal.aborted) return
     if (error instanceof HomeAssistantRequestError) {
       const authFailure = error.status === 401 || error.status === 403
       res.status(authFailure ? error.status : 502).json({
@@ -375,6 +383,9 @@ app.get('/api/home-assistant/entities', async (req, res) => {
       return
     }
     res.status(502).json({ status: 'error', message: 'Could not connect to the configured Home Assistant instance.' })
+  } finally {
+    req.removeListener('aborted', abortDisconnected)
+    res.removeListener('close', abortDisconnected)
   }
 })
 

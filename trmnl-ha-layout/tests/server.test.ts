@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Server } from 'node:http'
+import { request, type Server } from 'node:http'
 import type { Settings } from '../src/config.js'
 import { loadSettings, resolveSettingsPath, saveSettings } from '../src/config.js'
 import { app, terminusOptionsForSchedule } from '../src/server.js'
@@ -132,6 +132,24 @@ describe('server routes', () => {
     })
     expect(response.headers.get('content-type')).toContain('image/svg+xml')
     expect(loadScheduleLayout(list.defaultScheduleId).items).toHaveLength(saved.items.length)
+  })
+
+  it('renders metric snapshots into unsaved schedule previews', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const draft = structuredClone(loadScheduleLayout(list.defaultScheduleId))
+    draft.data.entities.temperature = 'sensor.temperature'
+    draft.items.push({
+      id: 'temperature-preview', type: 'metric', x: 0, y: 0, width: 180, height: 62,
+      label: 'Temperature', value: '{{ temperature }}', unitSource: 'temperature',
+      previewSource: 'temperature', previewState: '21.5', previewUnit: '°C'
+    })
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft)
+    })
+
+    expect(await response.text()).toContain('21.5 °C')
   })
 
   it('returns a sanitized client error for invalid draft previews', async () => {
@@ -406,6 +424,27 @@ describe('settings + terminus auth routes', () => {
     expect(text).toContain('discovery timed out')
     expect(text).not.toContain('ha-secret')
     expect(text).not.toContain('timed out after headers')
+  })
+
+  it('cancels Home Assistant discovery when the browser disconnects', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    let upstreamSignal: AbortSignal | undefined
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        upstreamSignal = init?.signal ?? undefined
+        return await new Promise<Response>((_resolve, reject) => {
+          upstreamSignal?.addEventListener('abort', () => reject(upstreamSignal?.reason), { once: true })
+        })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const clientRequest = request(`${baseUrl}/api/home-assistant/entities`)
+    clientRequest.on('error', () => undefined)
+    clientRequest.end()
+    await vi.waitFor(() => expect(upstreamSignal).toBeInstanceOf(AbortSignal))
+    clientRequest.destroy()
+    await vi.waitFor(() => expect(upstreamSignal?.aborted).toBe(true))
   })
 
   it('returns a sanitized gateway error for oversized discovery responses', async () => {

@@ -27,9 +27,11 @@ describe('HomeAssistantClient', () => {
     expect(states).toHaveLength(1)
     expect(calls).toEqual([{ url: 'http://ha.local:8123/api/states', auth: 'Bearer secret' }])
 
-    const failingFetcher = (async () => new Response('token=secret private details', { status: 503 })) as typeof fetch
+    let cancelled = false
+    const failingFetcher = (async () => new Response(new ReadableStream({ cancel: () => { cancelled = true } }), { status: 503 })) as typeof fetch
     await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', failingFetcher).getStates())
       .rejects.toThrow('Home Assistant request failed: 503')
+    expect(cancelled).toBe(true)
   })
 
   it('rejects discovery before fetching when the token is missing', async () => {
@@ -63,10 +65,12 @@ describe('HomeAssistantClient', () => {
       .rejects.toThrow('invalid states response')
     expect(cancelled).toBe(true)
 
-    const tooManyStates = Array.from({ length: 10_001 }, (_, index) => ({ entity_id: `sensor.${index}`, state: 'ok', attributes: {} }))
-    const oversizedCountFetcher = (async () => new Response(JSON.stringify(tooManyStates), { status: 200 })) as typeof fetch
-    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', oversizedCountFetcher).getStates())
-      .rejects.toThrow('invalid states response')
+  })
+
+  it('accepts more than ten thousand states within the byte limit', async () => {
+    const states = Array.from({ length: 10_001 }, (_, index) => ({ entity_id: `sensor.${index}`, state: 'ok', attributes: {} }))
+    const fetcher = (async () => new Response(JSON.stringify(states), { status: 200 })) as typeof fetch
+    await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', fetcher).getStates()).resolves.toHaveLength(10_001)
   })
 
   it('accepts attribute-heavy discovery responses within the configured limit', async () => {

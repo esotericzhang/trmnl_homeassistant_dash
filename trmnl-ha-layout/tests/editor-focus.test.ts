@@ -662,11 +662,28 @@ describe('editor focus continuity', () => {
     })
   })
 
+  it('removes metric snapshot overlays after the draft SVG commits', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout, false, [], false)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const label = document.querySelector<HTMLTextAreaElement>('textarea[name="label"]')!
+    label.value = 'Room temperature'
+    label.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    expect(document.querySelector('.item[data-id="temperature"] .item-preview.metric')).not.toBeNull()
+    await vi.waitFor(() => expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toContain('data:image/svg+xml'))
+    document.querySelector<HTMLImageElement>('#preview-frame')?.dispatchEvent(new dom.window.Event('load'))
+    expect(document.querySelector('.item[data-id="temperature"] .item-preview.metric')).toBeNull()
+  })
+
   it('formats metric preview snapshots with the named duration option', async () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'duration-minutes' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     const document = dom.window.document
+    showSnapshotFallback(dom)
 
     expect(document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m')
     document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
@@ -681,13 +698,16 @@ describe('editor focus continuity', () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }}', previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'raw' })
     let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m')
 
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature }}', previewSource: 'temperature', previewState: 'unknown', previewUnit: undefined, valueFormat: 'raw' })
     dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('unknown')
     delete (snapshotLayout.items[2] as { valueFormat?: string }).valueFormat
     dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('—')
   })
 
@@ -695,6 +715,7 @@ describe('editor focus continuity', () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C at {{ updated | time }}')
   })
 
@@ -702,10 +723,12 @@ describe('editor focus continuity', () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} / {{ temperature }}', previewSource: 'temperature', previewState: '125', previewUnit: 'min' })
     let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125 min / 125 min')
 
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }} / {{ temperature }}' })
     dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m / 125 min')
   })
 
@@ -713,6 +736,7 @@ describe('editor focus continuity', () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C indoors')
   })
 
@@ -796,6 +820,28 @@ describe('editor focus continuity', () => {
       previewState: '21.5',
       previewUnit: '°C'
     })
+  })
+
+  it('clears live unit insertion when the template includes the explicit unit', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} °C'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
   })
 
   it('shows discovery failures while preserving manual entity creation', async () => {
@@ -905,6 +951,7 @@ describe('editor focus continuity', () => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
       expect(calls).toHaveLength(1)
     })
+    const oldDiscoveryCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/home-assistant/entities')
 
     document.querySelector<HTMLButtonElement>('#global-settings')?.click()
     await vi.waitFor(() => expect(document.querySelector('#save-settings')).not.toBeNull())
@@ -912,6 +959,7 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('#global-modal')?.classList.contains('show')).toBe(false))
 
     await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
+    expect(oldDiscoveryCall?.[1]?.signal?.aborted).toBe(true)
 
     resolveOldDiscovery?.({ entities: [{ entityId: 'sensor.stale', domain: 'sensor', state: 'off' }] })
     await vi.waitFor(() => expect(document.querySelector('.entity-option')?.textContent).toContain('sensor.current'))
@@ -1045,6 +1093,14 @@ function expectCanvasState(document: Document, state: 'ready' | 'rendering' | 'e
   expect(document.querySelector('#stage')?.classList.contains('canvas-hidden')).toBe(state !== 'ready')
   expect(document.querySelector('#canvas-state')?.classList.contains('show')).toBe(state !== 'ready')
   expect((document.querySelector<HTMLButtonElement>('#retry-preview')?.hidden)).toBe(state !== 'error')
+}
+
+function showSnapshotFallback(dom: JSDOM): void {
+  const document = dom.window.document
+  document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+  const label = document.querySelector<HTMLTextAreaElement>('textarea[name="label"]')
+  if (!label) throw new Error('metric label input missing')
+  label.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
 }
 
 function sparseBaselineSvg(config: LayoutConfig): string {

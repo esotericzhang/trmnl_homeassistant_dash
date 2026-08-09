@@ -1,7 +1,6 @@
 import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.js'
 
 const DEFAULT_MAX_STATES_RESPONSE_BYTES = 16 * 1024 * 1024
-const MAX_STATES_COUNT = 10_000
 
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
@@ -23,7 +22,10 @@ export class HomeAssistantClient {
       headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
       signal
     })
-    if (!response.ok) throw new HomeAssistantRequestError(response.status)
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined)
+      throw new HomeAssistantRequestError(response.status)
+    }
     let payload: unknown
     try {
       payload = JSON.parse(await readResponseText(response, maxResponseBytes))
@@ -31,7 +33,7 @@ export class HomeAssistantClient {
       if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) throw error
       throw new HomeAssistantResponseError()
     }
-    if (!Array.isArray(payload) || payload.length > MAX_STATES_COUNT) throw new HomeAssistantResponseError()
+    if (!Array.isArray(payload)) throw new HomeAssistantResponseError()
     return payload as HassState[]
   }
 
@@ -106,6 +108,20 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
     ]
   }
   return { values: Object.fromEntries(Object.entries(states).map(([key, state]) => [key, state.state])), states }
+}
+
+export function editorPreviewRenderData(config: LayoutConfig): RenderData {
+  const data = sampleRenderData(config)
+  for (const item of config.items) {
+    if (item.type !== 'metric' || typeof item.previewSource !== 'string' || typeof item.previewState !== 'string') continue
+    data.values[item.previewSource] = item.previewState
+    data.states[item.previewSource] = {
+      entity_id: config.data.entities[item.previewSource],
+      state: item.previewState,
+      attributes: item.previewUnit ? { unit_of_measurement: item.previewUnit } : {}
+    }
+  }
+  return data
 }
 
 function sampleValue(key: string): string {
