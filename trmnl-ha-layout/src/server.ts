@@ -566,6 +566,7 @@ app.get('/', (_req, res) => {
 
 app.get('/editor', (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token : ''
+  res.set('Cache-Control', 'no-store')
   res.type('html').send(renderEditorHtml(token))
 })
 

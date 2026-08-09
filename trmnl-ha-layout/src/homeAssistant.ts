@@ -112,13 +112,13 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
 
 export function editorPreviewRenderData(config: LayoutConfig): RenderData {
   const data = sampleRenderData(config)
+  data.itemSnapshots = {}
   for (const item of config.items) {
     if (item.type !== 'metric' || typeof item.previewSource !== 'string' || typeof item.previewState !== 'string') continue
-    data.values[item.previewSource] = item.previewState
-    data.states[item.previewSource] = {
-      entity_id: config.data.entities[item.previewSource],
+    data.itemSnapshots[item.id] = {
+      source: item.previewSource,
       state: item.previewState,
-      attributes: item.previewUnit ? { unit_of_measurement: item.previewUnit } : {}
+      ...(item.previewUnit ? { unit: item.previewUnit } : {})
     }
   }
   return data

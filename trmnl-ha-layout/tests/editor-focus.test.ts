@@ -321,6 +321,34 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLImageElement>('#preview-frame')?.src).toBe(requestedSrc)
   })
 
+  it('ignores a superseded schedule config load', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSecond: ((response: Response) => void) | undefined
+    const secondResponse = new Promise<Response>(resolve => { resolveSecond = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/second/config') return secondResponse
+      return originalImplementation!(input, options)
+    })
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/second/config')).toBe(true))
+    const secondCall = fetcher.mock.calls.find(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/second/config')
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="default"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
+
+    const staleLayout = structuredClone(layout)
+    staleLayout.items[0].text = 'Stale second schedule'
+    resolveSecond?.(new Response(JSON.stringify(staleLayout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(secondCall?.[1]?.signal?.aborted).toBe(true)
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('A')
+  })
+
   it('restores the committed draft image after rapid switch failure', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], false)
     const document = dom.window.document
@@ -707,7 +735,7 @@ describe('editor focus continuity', () => {
 
   it('formats metric preview snapshots with the named duration option', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'duration-minutes' })
+    Object.assign(snapshotLayout.items[2], { unitSource: 'temperature', previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'duration-minutes' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     const document = dom.window.document
     showSnapshotFallback(dom)
@@ -723,7 +751,7 @@ describe('editor focus continuity', () => {
 
   it('honors inline preview filters and explicit raw state strings', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }}', previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'raw' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature | minutes }}', unitSource: 'temperature', previewSource: 'temperature', previewState: '125', previewUnit: 'min', valueFormat: 'raw' })
     let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m')
@@ -740,7 +768,7 @@ describe('editor focus continuity', () => {
 
   it('keeps a raw value unit when a later placeholder is formatted', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} at {{ updated | time }}', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C at {{ updated | time }}')
@@ -748,7 +776,7 @@ describe('editor focus continuity', () => {
 
   it('matches runtime unit placement for repeated and mixed placeholders', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} / {{ temperature }}', previewSource: 'temperature', previewState: '125', previewUnit: 'min' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} / {{ temperature }}', unitSource: 'temperature', previewSource: 'temperature', previewState: '125', previewUnit: 'min' })
     let dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('125 min / 125 min')
@@ -761,10 +789,19 @@ describe('editor focus continuity', () => {
 
   it('places a snapshot unit beside its placeholder in decorated templates', async () => {
     const snapshotLayout = structuredClone(layout)
-    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
     const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
     showSnapshotFallback(dom)
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C indoors')
+  })
+
+  it('omits fallback snapshot units without a matching live unit opt-in', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} °C', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
+    const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    showSnapshotFallback(dom)
+
+    expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C')
   })
 
   it('shows omitted legacy formatting as Default', async () => {
@@ -847,6 +884,76 @@ describe('editor focus continuity', () => {
       previewState: '21.5',
       previewUnit: '°C'
     })
+  })
+
+  it('does not apply a completed save to another active schedule', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveDefaultSave: ((response: Response) => void) | undefined
+    const defaultSave = new Promise<Response>(resolve => { resolveDefaultSave = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT') return defaultSave
+      if (path === '/api/schedules/second' && options?.method === 'PUT') {
+        return new Response(String(options.body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalImplementation!(input, options)
+    })
+
+    const defaultText = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    defaultText.value = 'Saved default'
+    defaultText.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    const secondText = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    secondText.value = 'Saved second'
+    secondText.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only "Second"'))
+
+    resolveDefaultSave?.(new Response(JSON.stringify({ schedule: { id: 'default', name: 'Default' }, config: { ...layout, items: [{ ...layout.items[0], text: 'Saved default' }, ...layout.items.slice(1)] } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second')
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Saved second')
+  })
+
+  it('serializes saves for the same schedule and keeps the latest result', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    const resolvers: Array<(response: Response) => void> = []
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT') {
+        return new Promise<Response>(resolve => resolvers.push(resolve))
+      }
+      return originalImplementation!(input, options)
+    })
+
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'First save'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    text.value = 'Second save'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(resolvers).toHaveLength(1))
+
+    const saveCalls = () => fetcher.mock.calls.filter(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    expect(saveCalls()).toHaveLength(1)
+    resolvers[0](new Response(String(saveCalls()[0][1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(resolvers).toHaveLength(2))
+    expect(saveCalls()).toHaveLength(2)
+    resolvers[1](new Response(String(saveCalls()[1][1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Second save')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.classList.contains('dirty')).toBe(false)
   })
 
   it('clears live unit insertion when the template includes the explicit unit', async () => {

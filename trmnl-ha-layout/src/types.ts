@@ -88,4 +88,5 @@ export type HassStateMap = Record<string, HassState>
 export interface RenderData {
   values: Record<string, string | number | null | undefined>
   states: HassStateMap
+  itemSnapshots?: Record<string, { source: string; state: string; unit?: string }>
 }

@@ -52,6 +52,7 @@ describe('server routes', () => {
 
     const editor = await fetch(`${baseUrl}/editor`)
     const editorHtml = await editor.text()
+    expect(editor.headers.get('cache-control')).toBe('no-store')
     expect(editorHtml).toContain('TRMNL Layout Editor')
     expect(editorHtml).toContain('id="preview-frame"')
     expect(editorHtml).toContain('src="/screen.svg?sample=1"')

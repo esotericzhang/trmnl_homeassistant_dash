@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { HomeAssistantClient } from '../src/homeAssistant.js'
+import { editorPreviewRenderData, HomeAssistantClient } from '../src/homeAssistant.js'
+import { renderSvg } from '../src/render.js'
+import type { LayoutConfig } from '../src/types.js'
 
 describe('HomeAssistantClient', () => {
   it('fetches an entity state with bearer auth', async () => {
@@ -81,5 +83,25 @@ describe('HomeAssistantClient', () => {
       .resolves.toMatchObject([{ entity_id: 'sensor.large', state: 'ok' }])
     await expect(new HomeAssistantClient('http://ha.local:8123', 'secret', fetcher).getStates(undefined, payload.length - 1))
       .rejects.toThrow('invalid states response')
+  })
+
+  it('keeps shared-source metric snapshots item-scoped without replacing forecast state', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { shared: 'sensor.shared' } },
+      items: [
+        { id: 'first', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'First', value: '{{ shared }}', unitSource: 'shared', previewSource: 'shared', previewState: '21', previewUnit: '°C' },
+        { id: 'second', type: 'metric', x: 200, y: 0, width: 180, height: 62, label: 'Second', value: '{{ shared }}', unitSource: 'shared', previewSource: 'shared', previewState: '45', previewUnit: '%' },
+        { id: 'forecast', type: 'forecast', x: 0, y: 80, width: 400, height: 100, source: 'shared' }
+      ]
+    }
+    const data = editorPreviewRenderData(config)
+    data.states.shared.attributes.forecast = [{ datetime: '2026-06-24T08:00:00Z', temperature: 61, condition: 'cloudy' }]
+
+    const svg = renderSvg(config, data)
+
+    expect(svg).toContain('21 °C')
+    expect(svg).toContain('45 %')
+    expect(svg).toContain('cloudy')
   })
 })
