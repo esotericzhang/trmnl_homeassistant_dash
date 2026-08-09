@@ -94,6 +94,21 @@ describe('layout config', () => {
     expect(() => validateLayoutConfig(config)).not.toThrow()
   })
 
+  it('requires non-empty unique item IDs', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const duplicate = structuredClone(config)
+    duplicate.items[1].id = duplicate.items[0].id
+    expect(() => validateLayoutConfig(duplicate)).toThrow(`duplicate item id: ${duplicate.items[0].id}`)
+
+    const empty = structuredClone(config) as unknown as LayoutConfig
+    Object.assign(empty.items[0], { id: '   ' })
+    expect(() => validateLayoutConfig(empty)).toThrow('item id must be a non-empty string')
+
+    const nonString = structuredClone(config) as unknown as LayoutConfig
+    Object.assign(nonString.items[0], { id: 7 })
+    expect(() => validateLayoutConfig(nonString)).toThrow('item id must be a non-empty string')
+  })
+
   it('validates runtime unit sources only on metric items', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const metric = config.items.find(item => item.type === 'metric')!

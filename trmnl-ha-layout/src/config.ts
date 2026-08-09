@@ -53,7 +53,13 @@ export function validateLayoutConfig(config: LayoutConfig): void {
         throw new Error(`frame.${key} must be a positive number`)
       }
     }
-    config.items.forEach(item => validateItem(item, config.data.entities))
+    const itemIds = new Set<string>()
+    config.items.forEach(item => {
+      if (typeof item.id !== 'string' || !item.id.trim()) throw new Error('item id must be a non-empty string')
+      if (itemIds.has(item.id)) throw new Error(`duplicate item id: ${item.id}`)
+      itemIds.add(item.id)
+      validateItem(item, config.data.entities)
+    })
   } catch (error) {
     if (error instanceof LayoutValidationError) throw error
     throw new LayoutValidationError(error instanceof Error ? error.message : String(error))

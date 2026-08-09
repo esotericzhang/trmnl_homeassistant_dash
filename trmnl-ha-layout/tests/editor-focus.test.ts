@@ -956,6 +956,62 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLButtonElement>('#save')?.classList.contains('dirty')).toBe(false)
   })
 
+  it('keeps the last successful save as the reset baseline when a queued save fails', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let saveAttempt = 0
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT' && ++saveAttempt === 2) {
+        return new Response('second save failed', { status: 500 })
+      }
+      return originalImplementation!(input, options)
+    })
+
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Persisted first save'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    text.value = 'Failed second save'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Save failed'))
+
+    document.querySelector<HTMLButtonElement>('#reset')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Persisted first save'))
+    expect(document.querySelector<HTMLButtonElement>('#save')?.classList.contains('dirty')).toBe(false)
+  })
+
+  it('defers reset until an in-flight save establishes the persisted baseline', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSave: ((response: Response) => void) | undefined
+    const pendingSave = new Promise<Response>(resolve => { resolveSave = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT') return pendingSave
+      return originalImplementation!(input, options)
+    })
+
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Saved before reset'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    text.value = 'Unsaved after submit'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#reset')?.click()
+    expect(text.value).toBe('Unsaved after submit')
+
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(true))
+    const saveCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    resolveSave?.(new Response(String(saveCall?.[1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Saved before reset'))
+  })
+
   it('clears live unit insertion when the template includes the explicit unit', async () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], {
@@ -969,6 +1025,30 @@ describe('editor focus continuity', () => {
     document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
     const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
     value.value = '{{ temperature }} °C'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+  })
+
+  it('clears live unit insertion for a different adjacent unit but not prose', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} indoors'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    value.value = '{{ temperature }} °F'
     value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
