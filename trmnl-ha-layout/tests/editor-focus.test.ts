@@ -787,6 +787,24 @@ describe('editor focus continuity', () => {
     expect(dom.window.document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('2h 5m / 125 min')
   })
 
+  it('keeps automatic units for repeated placeholders without explicit units', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} °C / {{ temperature }}', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
+    const dom = await editorDom(null, { entities: [] }, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    showSnapshotFallback(dom)
+    expect(document.querySelector('.item[data-id="temperature"] .metric-value')?.textContent).toBe('21.5 °C / 21.5 °C')
+
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} °F / {{ temperature }}'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).toHaveProperty('unitSource', 'temperature')
+  })
+
   it('places a snapshot unit beside its placeholder in decorated templates', async () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], { value: '{{ temperature }} indoors', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' })
@@ -1111,6 +1129,68 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
     expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Second loaded')
     expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
+  })
+
+  it.each([
+    ['create', '#add-schedule', '/api/schedules'],
+    ['duplicate', '#schedule-popover [data-action="duplicate"]', '/api/schedules/default/duplicate']
+  ])('keeps %s non-interactive until the new schedule load commits', async (_operation, selector, mutationPath) => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveCreated: ((response: Response) => void) | undefined
+    const pendingCreated = new Promise<Response>(resolve => { resolveCreated = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === mutationPath && options?.method === 'POST') return new Response(JSON.stringify({ id: 'created', name: 'Created', enabled: false, order: 1, timing: { kind: 'manual' }, destination: {}, status: {} }), { status: 201, headers: { 'Content-Type': 'application/json' } })
+      if (path === '/api/schedules/created/config') return pendingCreated
+      return originalImplementation!(input, options)
+    })
+    vi.spyOn(dom.window, 'prompt').mockReturnValue('Created')
+
+    if (selector.includes('schedule-popover')) document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>(selector)?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/created/config')).toBe(true))
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(true)
+    expect(document.querySelector<HTMLFormElement>('#form')?.hidden).toBe(true)
+    expectCanvasState(document, 'rendering')
+
+    const createdLayout = structuredClone(layout)
+    createdLayout.items[0].text = 'Created loaded'
+    resolveCreated?.(new Response(JSON.stringify(createdLayout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('created'))
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Created loaded')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
+  })
+
+  it('does not push a different or newly dirty schedule after saving', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSave: ((response: Response) => void) | undefined
+    const pendingSave = new Promise<Response>(resolve => { resolveSave = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT') return pendingSave
+      return originalImplementation!(input, options)
+    })
+
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Submitted for push'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#push-now')?.click()
+    text.value = 'Newer unsaved draft'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    const saveCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    resolveSave?.(new Response(String(saveCall?.[1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Push canceled'))
+
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname.endsWith('/push') && options?.method === 'POST')).toBe(false)
   })
 
   it('clears live unit insertion when the template includes the explicit unit', async () => {
