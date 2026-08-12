@@ -1131,6 +1131,25 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
   })
 
+  it('restores the prior ready canvas when an uncached schedule load fails', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      if (new URL(String(input), 'http://editor.local').pathname === '/api/schedules/second/config') return new Response('load failed', { status: 500 })
+      return originalImplementation!(input, options)
+    })
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Schedule load failed'))
+
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default')
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('A')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
+    expectCanvasState(document, 'ready')
+  })
+
   it.each([
     ['create', '#add-schedule', '/api/schedules'],
     ['duplicate', '#schedule-popover [data-action="duplicate"]', '/api/schedules/default/duplicate']
@@ -1384,7 +1403,7 @@ describe('editor focus continuity', () => {
     expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
   })
 
-  it('keeps live units for ambiguous adjacent prose', async () => {
+  it.each(['{{ temperature }} in room', '{{ temperature }} now', '{{ temperature }} low', 'Air {{ temperature }}'])('keeps live units for ambiguous adjacent prose: %s', async (template) => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], {
       unitSource: 'temperature',
@@ -1396,7 +1415,7 @@ describe('editor focus continuity', () => {
     const document = dom.window.document
     document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
     const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
-    value.value = '{{ temperature }} in room'
+    value.value = template
     value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))

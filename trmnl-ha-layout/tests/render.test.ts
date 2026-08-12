@@ -408,18 +408,32 @@ describe('renderer', () => {
     expect(svg).not.toContain(`hPa ${explicitUnit}`)
   })
 
-  it('keeps automatic units beside ordinary prose', () => {
+  it.each(['in room', 'now', 'low'])('keeps automatic units beside ordinary prose: %s', (prose) => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
       data: { entities: { temperature: 'sensor.temperature' } },
-      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} in room', unitSource: 'temperature' }]
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: `{{ temperature }} ${prose}`, unitSource: 'temperature' }]
     }
     const svg = renderSvg(config, {
       values: { temperature: '21.5' },
       states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
     })
 
-    expect(svg).toContain('>21.5 °C in room</text>')
+    expect(svg).toContain(`>21.5 °C ${prose}</text>`)
+  })
+
+  it('keeps automatic units beside ordinary leading prose', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: 'Air {{ temperature }}', unitSource: 'temperature' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
+    })
+
+    expect(svg).toContain('>Air 21.5 °C</text>')
   })
 
   it('renders large repeated unit templates without quadratic scanning', () => {
