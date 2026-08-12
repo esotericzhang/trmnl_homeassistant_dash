@@ -1354,7 +1354,7 @@ describe('editor focus continuity', () => {
 
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
-    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+    expect(body.config.items.find(item => item.id === 'temperature')).toMatchObject({ unitSource: 'temperature', explicitUnitOccurrences: [0] })
   })
 
   it('clears live unit insertion for a different adjacent unit but not prose', async () => {
@@ -1378,7 +1378,7 @@ describe('editor focus continuity', () => {
 
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
-    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+    expect(body.config.items.find(item => item.id === 'temperature')).toMatchObject({ unitSource: 'temperature', explicitUnitOccurrences: [0] })
   })
 
   it('clears live unit insertion for uncommon explicit units', async () => {
@@ -1400,7 +1400,7 @@ describe('editor focus continuity', () => {
 
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
-    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+    expect(body.config.items.find(item => item.id === 'temperature')).toMatchObject({ unitSource: 'temperature', explicitUnitOccurrences: [0] })
   })
 
   it.each(['{{ temperature }} in room', '{{ temperature }} now', '{{ temperature }} low', 'Air {{ temperature }}'])('keeps live units for ambiguous adjacent prose: %s', async (template) => {
@@ -1423,6 +1423,27 @@ describe('editor focus continuity', () => {
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
     expect(body.config.items.find(item => item.id === 'temperature')).toHaveProperty('unitSource', 'temperature')
+    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('explicitUnitOccurrences')
+  })
+
+  it('does not mark uppercase prose as an explicit unit', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} NOW'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).toHaveProperty('unitSource', 'temperature')
+    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('explicitUnitOccurrences')
   })
 
   it('recognizes ambiguous inches when they match the discovered unit', async () => {
@@ -1444,7 +1465,7 @@ describe('editor focus continuity', () => {
 
     const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
     const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
-    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+    expect(body.config.items.find(item => item.id === 'temperature')).toMatchObject({ unitSource: 'temperature', explicitUnitOccurrences: [0] })
   })
 
   it('shows discovery failures while preserving manual entity creation', async () => {

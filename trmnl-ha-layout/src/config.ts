@@ -88,6 +88,20 @@ function validateItem(item: LayoutItem, entities: Record<string, string>): void 
     if (typeof candidate.unitSource !== 'string' || !candidate.unitSource) throw new Error(`item ${item.id} has invalid unitSource`)
     validateMetricSource(item, entities, 'unitSource', candidate.unitSource)
   }
+  if ('explicitUnitOccurrences' in candidate) {
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use explicitUnitOccurrences when type is metric`)
+    if (!Array.isArray(candidate.explicitUnitOccurrences)
+      || candidate.explicitUnitOccurrences.some(value => !Number.isInteger(value) || value < 0)
+      || new Set(candidate.explicitUnitOccurrences).size !== candidate.explicitUnitOccurrences.length) {
+      throw new Error(`item ${item.id} has invalid explicitUnitOccurrences`)
+    }
+    if (!item.unitSource) throw new Error(`item ${item.id} explicitUnitOccurrences requires unitSource`)
+    const placeholders = Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g))
+    if (candidate.explicitUnitOccurrences.some(index => placeholders[index]?.[1] !== item.unitSource
+      || (placeholders[index]?.[2] && placeholders[index]?.[2] !== 'raw'))) {
+      throw new Error(`item ${item.id} explicitUnitOccurrences must reference raw unitSource placeholders`)
+    }
+  }
   for (const key of ['previewSource', 'previewState', 'previewUnit'] as const) {
     if (!(key in candidate)) continue
     if (item.type !== 'metric') throw new Error(`item ${item.id} may only use ${key} when type is metric`)

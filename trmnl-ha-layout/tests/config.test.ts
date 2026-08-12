@@ -134,6 +134,19 @@ describe('layout config', () => {
     expect(() => validateLayoutConfig(config)).not.toThrow()
   })
 
+  it('validates explicit unit occurrence metadata', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep }} / {{ minutesAwake }}', explicitUnitOccurrences: [0] })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+
+    Object.assign(metric, { explicitUnitOccurrences: [1] })
+    expect(() => validateLayoutConfig(config)).toThrow('must reference raw unitSource placeholders')
+
+    delete (metric as { unitSource?: string }).unitSource
+    expect(() => validateLayoutConfig(config)).toThrow('requires unitSource')
+  })
+
   it('requires preview sources to be configured and referenced by the metric value', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     const metric = config.items.find(item => item.type === 'metric')!

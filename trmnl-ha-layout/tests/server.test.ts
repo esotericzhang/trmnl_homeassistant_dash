@@ -504,11 +504,27 @@ describe('settings + terminus auth routes', () => {
 
         const authorized = await fetch(`${baseUrl}${path}`, { headers: { Authorization: 'Bearer guard-token' } })
         expect(authorized.ok).toBe(true)
+        expect(authorized.headers.get('cache-control')).toBe('no-store')
         expect(await authorized.text()).toContain('locked')
       }
     } finally {
       saveScheduleLayout(scheduleId, original)
     }
+  })
+
+  it('prevents caching authenticated Home Assistant discovery', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret', settingsToken: 'guard-token' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const response = await fetch(`${baseUrl}/api/home-assistant/entities`, { headers: { Authorization: 'Bearer guard-token' } })
+
+    expect(response.ok).toBe(true)
+    expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
   it('does not expose malformed protected config content before authentication', async () => {

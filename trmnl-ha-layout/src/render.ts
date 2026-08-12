@@ -82,7 +82,7 @@ function labelFor(item){if(item.type==='text')return item.id+' · text';if(item.
 function liveText(item){return item.type==='text'&&!String(item.text||'').includes('{{')}
 function editorPreview(item){return liveText(item)||(item.type==='metric'&&typeof item.previewState==='string')}
 function formatPreviewValue(value,filter){if(filter==='raw')return String(value);if(value==='unknown'||value==='unavailable')return'—';if(filter==='minutes'){const minutes=Number(value);if(!Number.isFinite(minutes))return String(value);const hours=Math.floor(minutes/60),mins=minutes%60;return hours>0?hours+'h '+mins+'m':mins+'m'}if(filter==='time'||filter==='date'){const date=new Date(String(value));if(Number.isNaN(date.getTime()))return String(value);return filter==='time'?new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(date):new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(date)}return String(value)}
-function metricPreviewText(item){const template=String(item.value||''),defaultFilter=item.valueFormat==='duration-minutes'?'minutes':item.valueFormat==='raw'?'raw':undefined;return template.replace(/{{\\s*([\\w.-]+)(?:\\s*\\|\\s*([\\w-]+))?\\s*}}/g,(placeholder,source,inlineFilter,offset)=>{if(source!==item.previewSource)return placeholder;const filter=inlineFilter||defaultFilter,value=formatPreviewValue(item.previewState,filter),appendUnit=item.unitSource===source&&item.previewUnit&&value!=='—'&&(!filter||filter==='raw')&&!placeholderHasBoundedExplicitUnit(template,offset,placeholder,item.previewUnit);return value+(appendUnit?' '+item.previewUnit:'')})}
+function metricPreviewText(item){const template=String(item.value||''),defaultFilter=item.valueFormat==='duration-minutes'?'minutes':item.valueFormat==='raw'?'raw':undefined;let occurrence=0;return template.replace(/{{\\s*([\\w.-]+)(?:\\s*\\|\\s*([\\w-]+))?\\s*}}/g,(placeholder,source,inlineFilter,offset)=>{const index=occurrence++;if(source!==item.previewSource)return placeholder;const filter=inlineFilter||defaultFilter,value=formatPreviewValue(item.previewState,filter),explicit=item.explicitUnitOccurrences?.includes(index)||placeholderHasLegacyExplicitUnit(template,offset,placeholder,item.previewUnit),appendUnit=item.unitSource===source&&item.previewUnit&&value!=='—'&&(!filter||filter==='raw')&&!explicit;return value+(appendUnit?' '+item.previewUnit:'')})}
 function previewFor(item){if(item.type!=='text'&&item.type!=='metric')return null;const p=document.createElement('div');p.className='item-preview'+(item.type==='metric'?' metric':'');Object.assign(p.style,{width:'100%',height:'100%',color:config.frame.foreground||'#111',fontFamily:config.frame.fontFamily||'inherit'});if(item.type==='metric'){p.style.background=config.frame.background||'#fff';const l=document.createElement('div');l.className='muted';l.textContent=item.label||'';const v=document.createElement('div');v.className='metric-value';v.style.fontSize=(item.fontSize||30)+'px';v.textContent=typeof item.previewState==='string'?metricPreviewText(item):item.value||'';p.append(l,v)}else{p.style.fontSize=(item.fontSize||18)+'px';p.style.fontWeight=item.weight||400;p.style.textAlign=item.align||'left';p.textContent=item.text||''}return p}
 function renderForm(){if(addMode)return;const item=selected();empty.hidden=!!item;form.hidden=!item;if(!item)return;form.innerHTML=fields.filter(f=>f in item||commonField(f,item)).map(fieldHtml).join('')+'<div class="actions" style="margin-top:12px"><button class="danger" id="delete-field" type="button">Delete field</button></div>';form.querySelectorAll('input,select,textarea').forEach(input=>input.addEventListener('input',updateFromForm));document.getElementById('delete-field').onclick=deleteSelectedField}
 function commonField(name,item){return ['x','y','width','height','fontSize','weight','align'].includes(name)&&item.type!=='line'||name==='valueFormat'&&item.type==='metric'}
@@ -94,16 +94,14 @@ function renderEntityResults(){const results=document.getElementById('entity-res
 function selectHomeAssistantEntity(entity){const input=document.getElementById('new-entity'),label=document.getElementById('new-label'),source=document.getElementById('new-source');selectedHaEntity=entity;selectedHaInputs={'new-entity':entity.entityId};input.value=entity.entityId;if((!label.value.trim()||label.value==='Sensor')&&entity.friendlyName){label.value=entity.friendlyName;selectedHaInputs['new-label']=label.value}if(!source.value.trim()){source.value=camelKey(entity.entityId);selectedHaInputs['new-source']=source.value}input.focus()}
 // A selected-field input event mutates the item here. Calling render() would call renderForm(),
 // whose form.innerHTML replaces the focused control; the schedule-name input is never replaced.
-function updateFromForm(event){const item=selected(),name=event.target.name;if(!name||name==='id'||name==='type')return;const raw=event.target.value;if(item.type==='metric'&&name==='value'&&String(item.value??'')!==raw){if(item.unitSource&&!templateNeedsAutomaticUnit(raw,item.unitSource,item.previewUnit))delete item.unitSource;if(item.previewSource&&!templateReferencesSource(raw,item.previewSource)){delete item.previewSource;delete item.previewState;delete item.previewUnit}}if(raw==='')delete item[name];else if(name==='rowDivider')item[name]=raw==='true';else if(numericFields.has(name))item[name]=Number(raw);else item[name]=raw;clamp(item);markDirty(false);requestAnimationFrame(renderOverlay)}
+function updateFromForm(event){const item=selected(),name=event.target.name;if(!name||name==='id'||name==='type')return;const raw=event.target.value;if(item.type==='metric'&&name==='value'&&String(item.value??'')!==raw){if(item.unitSource){const occurrences=explicitUnitOccurrences(raw,item.unitSource,item.previewUnit);if(occurrences.length)item.explicitUnitOccurrences=occurrences;else delete item.explicitUnitOccurrences}if(item.previewSource&&!templateReferencesSource(raw,item.previewSource)){delete item.previewSource;delete item.previewState;delete item.previewUnit}}if(raw==='')delete item[name];else if(name==='rowDivider')item[name]=raw==='true';else if(numericFields.has(name))item[name]=Number(raw);else item[name]=raw;clamp(item);markDirty(false);requestAnimationFrame(renderOverlay)}
 function deleteSelectedField(){const item=selected();if(!item)return;if(!confirm('Delete field "'+item.id+'"? Save afterward to persist this change.'))return;const index=config.items.findIndex(entry=>entry.id===item.id);if(index<0)return;config.items.splice(index,1);addedIds.delete(item.id);removeUnusedEntities(referencedSources(item));selectedId=config.items[Math.min(index,config.items.length-1)]?.id??config.items[index-1]?.id;drag=null;markDirty();render();status('Deleted field. Save to persist it to runtime YAML.')}
 function removeUnusedEntities(sources){if(!config.data||!config.data.entities)return;for(const source of sources)if(source in config.data.entities&&!sourceStillReferenced(source))delete config.data.entities[source]}
 function sourceStillReferenced(source){return config.items.some(item=>referencedSources(item).has(source))}
 function templateReferencesSource(template,source){return Array.from(String(template).matchAll(/{{\\s*([\\w.-]+)(?:\\s*\\|\\s*[\\w-]+)?\\s*}}/g),match=>match[1]).includes(source)}
-function placeholderHasAdjacentUnit(template,offset,placeholder,unit){if(!unit)return false;const before=template.slice(0,offset).trimEnd(),after=template.slice(offset+placeholder.length).trimStart(),beforeStart=before.length-unit.length,beforeMatch=beforeStart>=0&&before.slice(beforeStart)===unit&&(beforeStart===0||/[\\s(,;:]/.test(before[beforeStart-1])),afterMatch=after.startsWith(unit)&&(after.length===unit.length||/[\\s),.;:!?]/.test(after[unit.length]));return beforeMatch||afterMatch}
-function placeholderHasExplicitUnit(template,offset,placeholder,knownUnit){const beforeUnit=/(?:°\\s*[CFK]|[%‰]|[$€£¥]|(?:ms|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|Hz|kHz|MHz|GHz|V|mV|A|mA|W|kW|Wh|kWh|J|kJ|Pa|hPa|bar|psi|m|cm|mm|km|ft|yd|mi|g|kg|mg|lb|oz|L|mL|gal|K|C|F|lx|lm|dB|rpm|ppm|ppb|B|KB|MB|GB|TB)(?:\\s*[/·]\\s*(?:s|h|m|m2|m3|ft|in|kg|L))?)\\s*$/i,afterUnit=/^\\s*(?:°\\s*[CFK]|[%‰]|[$€£¥]|(?:ms|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|Hz|kHz|MHz|GHz|V|mV|A|mA|W|kW|Wh|kWh|J|kJ|Pa|hPa|bar|psi|m|cm|mm|km|ft|yd|mi|g|kg|mg|lb|oz|L|mL|gal|K|C|F|lx|lm|dB|rpm|ppm|ppb|B|KB|MB|GB|TB)(?:\\s*[/·]\\s*(?:s|h|m|m2|m3|ft|in|kg|L))?)(?=$|\\s|[),.;:!?])/i;if(placeholderHasAdjacentUnit(template,offset,placeholder,knownUnit))return true;return beforeUnit.test(template.slice(0,offset))||afterUnit.test(template.slice(offset+placeholder.length))}
-function boundedUnitLiteral(value,knownUnit){if(!value)return false;if(knownUnit&&value===knownUnit)return true;if(value.length>16||!/[\\p{L}\\d°%‰$€£¥µμ²³]/u.test(value)||!/^[-\\w°%‰$€£¥µμ²³/·]+$/u.test(value))return false;if(/[°%‰$€£¥µμ²³/·\\d]/u.test(value))return true;if(/^[A-Z]{1,5}$/.test(value))return true;return /^[a-z]{1,3}[A-Z][a-z]?$/.test(value)||/^[A-Z][A-Za-z]*[A-Z][A-Za-z]*$/.test(value)}
-function placeholderHasBoundedExplicitUnit(template,offset,placeholder,knownUnit){const before=template.slice(Math.max(0,offset-32),offset).match(/([^\\s,.;:!?()[\\]{}]+)\\s{0,3}$/u),after=template.slice(offset+placeholder.length,offset+placeholder.length+32).match(/^\\s{0,3}([^\\s,.;:!?()[\\]{}]+)/u);return boundedUnitLiteral(before&&before[1],knownUnit)||boundedUnitLiteral(after&&after[1],knownUnit)}
-function templateNeedsAutomaticUnit(template,source,knownUnit){for(const match of String(template).matchAll(/{{\\s*([\\w.-]+)(?:\\s*\\|\\s*([\\w-]+))?\\s*}}/g)){if(match[1]===source&&(!match[2]||match[2]==='raw')&&!placeholderHasBoundedExplicitUnit(String(template),match.index||0,match[0],knownUnit))return true}return false}
+function legacyUnitLiteral(value,knownUnit){if(!value)return false;if(knownUnit&&value===knownUnit)return true;return /^(?:°[CFK]|%|‰|[$€£¥]|ms|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|Hz|kHz|MHz|GHz|V|mV|A|mA|W|kW|Wh|kWh|MWh|VA|J|kJ|Pa|hPa|mmHg|inHg|bar|psi|m|cm|mm|km|ft|yd|mi|mph|g|kg|mg|lb|oz|L|mL|gal|K|C|F|lx|lm|dB|rpm|ppm|ppb|B|KB|MB|GB|TB|µg\\/m³|W\\/m²)$/u.test(value)}
+function placeholderHasLegacyExplicitUnit(template,offset,placeholder,knownUnit){const before=template.slice(Math.max(0,offset-32),offset).match(/([^\\s,.;:!?()[\\]{}]+)\\s{0,3}$/u),after=template.slice(offset+placeholder.length,offset+placeholder.length+32).match(/^\\s{0,3}([^\\s,.;:!?()[\\]{}]+)/u);return legacyUnitLiteral(before&&before[1],knownUnit)||legacyUnitLiteral(after&&after[1],knownUnit)}
+function explicitUnitOccurrences(template,source,knownUnit){const occurrences=[];let index=0;for(const match of String(template).matchAll(/{{\\s*([\\w.-]+)(?:\\s*\\|\\s*([\\w-]+))?\\s*}}/g)){if(match[1]===source&&(!match[2]||match[2]==='raw')&&placeholderHasLegacyExplicitUnit(String(template),match.index||0,match[0],knownUnit))occurrences.push(index);index++}return occurrences}
 function referencedSources(item){const sources=new Set();for(const value of Object.values(item)){if(typeof value!=='string')continue;const pattern=/{{\\s*([\\w.-]+)/g;let match;while((match=pattern.exec(value)))sources.add(match[1])}if(item.type==='forecast'&&item.source)sources.add(item.source);return sources}
 function createField(){if(!config){status('Create a schedule before adding fields.');return}const created=addType==='sensor'?createSensorField():createTextField();if(!created)return;setAddMode(false);markDirty();render();status('Added field. Save to persist it to runtime YAML.')}
 function createTextField(){const text=document.getElementById('new-text').value.trim()||'New text',id=uniqueKey(slug(text)||'text',existingItemIds()),item={id,type:'text',x:32,y:120,width:220,height:34,fontSize:24,weight:700,text};config.items.push(item);addedIds.add(id);selectedId=id;clamp(item);return true}
@@ -177,7 +175,7 @@ function renderText(item: TextItem, data: RenderData, clipId: string): string {
 function renderMetric(item: MetricItem, data: RenderData, clipId: string): string {
   const defaultFilter = item.valueFormat === 'duration-minutes' ? 'minutes' : item.valueFormat
   const snapshot = data.itemSnapshots?.[item.id]
-  const formattedValue = interpolateMetric(item.value, data, defaultFilter, item.unitSource, snapshot)
+  const formattedValue = interpolateMetric(item.value, data, defaultFilter, item.unitSource, item.explicitUnitOccurrences, snapshot)
   const valueFontSize = item.fontSize ?? 30
   return `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="${item.width}" height="${item.height}" /></clipPath></defs><g transform="translate(${item.x},${item.y})">
     <rect width="${item.width}" height="${item.height}" rx="10" fill="#f7f7f7" stroke="#111" />
@@ -188,10 +186,13 @@ function renderMetric(item: MetricItem, data: RenderData, clipId: string): strin
   </g>`
 }
 
-function interpolateMetric(template: string, data: RenderData, defaultFilter?: string, unitSource?: string, snapshot?: { source: string; state: string; unit?: string }): string {
+function interpolateMetric(template: string, data: RenderData, defaultFilter?: string, unitSource?: string, explicitUnitOccurrences: number[] = [], snapshot?: { source: string; state: string; unit?: string }): string {
   let result = ''
   let lastIndex = 0
+  let occurrence = 0
+  const explicitOccurrences = new Set(explicitUnitOccurrences)
   for (const match of template.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g)) {
+    const occurrenceIndex = occurrence++
     const key = match[1]
     const filter = match[2] ?? defaultFilter
     const unit = snapshot?.source === key ? snapshot.unit : data.states[key]?.attributes.unit_of_measurement
@@ -199,37 +200,23 @@ function interpolateMetric(template: string, data: RenderData, defaultFilter?: s
     const value = formatValue(snapshot?.source === key ? snapshot.state : data.values[key], filter)
     result += escapeXml(value)
     if (key === unitSource && value !== '—' && typeof unit === 'string' && unit && (!filter || filter === 'raw')
-      && !legacyPlaceholderHasExplicitMetricUnit(template, match.index, match[0], unit)) result += ` ${escapeXml(unit)}`
+      && !explicitOccurrences.has(occurrenceIndex)
+      && !placeholderHasLegacyExplicitMetricUnit(template, match.index, match[0], unit)) result += ` ${escapeXml(unit)}`
     lastIndex = match.index + match[0].length
   }
   return result + escapeXml(template.slice(lastIndex))
 }
 
-function boundedMetricUnitLiteral(value: string | undefined, knownUnit: string): boolean {
+function legacyMetricUnitLiteral(value: string | undefined, knownUnit: string): boolean {
   if (!value) return false
   if (knownUnit && value === knownUnit) return true
-  if (value.length > 16 || !/[\p{L}\d°%‰$€£¥µμ²³]/u.test(value) || !/^[-\w°%‰$€£¥µμ²³/·]+$/u.test(value)) return false
-  if (/[°%‰$€£¥µμ²³/·\d]/u.test(value)) return true
-  if (/^[A-Z]{1,5}$/.test(value)) return true
-  return /^[a-z]{1,3}[A-Z][a-z]?$/.test(value) || /^[A-Z][A-Za-z]*[A-Z][A-Za-z]*$/.test(value)
+  return /^(?:°[CFK]|%|‰|[$€£¥]|ms|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|Hz|kHz|MHz|GHz|V|mV|A|mA|W|kW|Wh|kWh|MWh|VA|J|kJ|Pa|hPa|mmHg|inHg|bar|psi|m|cm|mm|km|ft|yd|mi|mph|g|kg|mg|lb|oz|L|mL|gal|K|C|F|lx|lm|dB|rpm|ppm|ppb|B|KB|MB|GB|TB|µg\/m³|W\/m²)$/u.test(value)
 }
 
-function placeholderHasAdjacentUnit(template: string, offset: number, placeholder: string, unit: string): boolean {
-  return placeholderHasBoundedExplicitMetricUnit(template, offset, placeholder, unit)
-}
-
-function legacyPlaceholderHasExplicitMetricUnit(template: string, offset: number, placeholder: string, knownUnit: string): boolean {
-  if (template) return placeholderHasBoundedExplicitMetricUnit(template, offset, placeholder, knownUnit)
-  const beforeUnit = /(?:°\s*[CFK]|[%‰]|[$€£¥]|(?:ms|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|Hz|kHz|MHz|GHz|V|mV|A|mA|W|kW|Wh|kWh|J|kJ|Pa|hPa|bar|psi|m|cm|mm|km|ft|yd|mi|g|kg|mg|lb|oz|L|mL|gal|K|C|F|lx|lm|dB|rpm|ppm|ppb|B|KB|MB|GB|TB)(?:\s*[/·]\s*(?:s|h|m|m2|m3|ft|in|kg|L))?)\s*$/i
-  const afterUnit = /^\s*(?:°\s*[CFK]|[%‰]|[$€£¥]|(?:ms|s|sec|secs|min|mins|h|hr|hrs|d|day|days|wk|wks|Hz|kHz|MHz|GHz|V|mV|A|mA|W|kW|Wh|J|kJ|Pa|hPa|bar|psi|m|cm|mm|km|ft|yd|mi|g|kg|mg|lb|oz|L|mL|gal|K|C|F|lx|lm|dB|rpm|ppm|ppb|B|KB|MB|GB|TB)(?:\s*[/·]\s*(?:s|h|m|m2|m3|ft|in|kg|L))?)(?=$|\s|[),.;:!?])/i
-  if (placeholderHasAdjacentUnit(template, offset, placeholder, knownUnit)) return true
-  return beforeUnit.test(template.slice(0, offset)) || afterUnit.test(template.slice(offset + placeholder.length))
-}
-
-function placeholderHasBoundedExplicitMetricUnit(template: string, offset: number, placeholder: string, knownUnit: string): boolean {
+function placeholderHasLegacyExplicitMetricUnit(template: string, offset: number, placeholder: string, knownUnit: string): boolean {
   const before = template.slice(Math.max(0, offset - 32), offset).match(/([^\s,.;:!?()[\]{}]+)\s{0,3}$/u)
   const after = template.slice(offset + placeholder.length, offset + placeholder.length + 32).match(/^\s{0,3}([^\s,.;:!?()[\]{}]+)/u)
-  return boundedMetricUnitLiteral(before?.[1], knownUnit) || boundedMetricUnitLiteral(after?.[1], knownUnit)
+  return legacyMetricUnitLiteral(before?.[1], knownUnit) || legacyMetricUnitLiteral(after?.[1], knownUnit)
 }
 
 function renderForecast(item: ForecastItem, data: RenderData, clipId: string): string {

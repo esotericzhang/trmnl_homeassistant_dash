@@ -207,6 +207,7 @@ function hasPreviewSnapshots(layout: ReturnType<typeof loadLayoutConfig>): boole
 
 function sendLayoutConfig(req: express.Request, res: express.Response, layout: ReturnType<typeof loadLayoutConfig>): void {
   if (hasPreviewSnapshots(layout) && !requireMutationAuth(req, res)) return
+  if (hasPreviewSnapshots(layout)) res.set('Cache-Control', 'no-store')
   res.json(layout)
 }
 
@@ -361,6 +362,7 @@ app.get('/api/home-assistant/entities', async (req, res) => {
       .sort((left, right) => left.domain.localeCompare(right.domain)
         || (left.friendlyName ?? left.entityId).localeCompare(right.friendlyName ?? right.entityId)
         || left.entityId.localeCompare(right.entityId))
+    res.set('Cache-Control', 'no-store')
     res.json({ entities })
   } catch (error) {
     if (disconnected.signal.aborted) return

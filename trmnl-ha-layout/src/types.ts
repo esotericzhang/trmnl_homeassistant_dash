@@ -39,6 +39,7 @@ export interface MetricItem extends BaseItem {
   value: string
   valueFormat?: 'raw' | 'duration-minutes'
   unitSource?: string
+  explicitUnitOccurrences?: number[]
   previewSource?: string
   previewState?: string
   previewUnit?: string

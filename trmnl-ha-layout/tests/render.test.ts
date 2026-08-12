@@ -393,6 +393,35 @@ describe('renderer', () => {
     expect(svg).not.toContain('°F °C')
   })
 
+  it('keeps a legacy mph literal when the live unit changes', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { speed: 'sensor.speed' } },
+      items: [{ id: 'speed', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Speed', value: '{{ speed }} mph', unitSource: 'speed' }]
+    }
+    const svg = renderSvg(config, {
+      values: { speed: '10' },
+      states: { speed: { entity_id: 'sensor.speed', state: '10', attributes: { unit_of_measurement: 'km/h' } } }
+    })
+
+    expect(svg).toContain('>10 mph</text>')
+    expect(svg).not.toContain('km/h mph')
+  })
+
+  it('uses explicit occurrence metadata without treating uppercase prose as a unit', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 300, height: 62, label: 'Temperature', value: '{{ temperature }} custom / {{ temperature }} NOW', unitSource: 'temperature', explicitUnitOccurrences: [0] }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
+    })
+
+    expect(svg).toContain('>21.5 custom / 21.5 °C NOW</text>')
+  })
+
   it.each(['mmHg', 'inHg', 'VA', 'MWh', 'µg/m³', 'W/m²'])('recognizes uncommon explicit unit %s', (explicitUnit) => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
