@@ -1012,6 +1012,35 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Saved before reset'))
   })
 
+  it('keeps a newer unsaved draft preview after an earlier save completes', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSave: ((response: Response) => void) | undefined
+    const pendingSave = new Promise<Response>(resolve => { resolveSave = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT') return pendingSave
+      return originalImplementation!(input, options)
+    })
+
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Submitted layout'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    text.value = 'Newer unsaved layout'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(true))
+    const saveCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    resolveSave?.(new Response(String(saveCall?.[1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await vi.waitFor(() => expect(decodeURIComponent(document.querySelector<HTMLImageElement>('#preview-frame')?.src || '')).toContain('Newer unsaved layout'))
+    expect(decodeURIComponent(document.querySelector<HTMLImageElement>('#preview-frame')?.src || '')).not.toContain('Submitted layout')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.classList.contains('dirty')).toBe(true)
+  })
+
   it('clears live unit insertion when the template includes the explicit unit', async () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], {
@@ -1049,6 +1078,50 @@ describe('editor focus continuity', () => {
     value.value = '{{ temperature }} indoors'
     value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     value.value = '{{ temperature }} °F'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+  })
+
+  it('keeps live units for ambiguous adjacent prose', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} in room'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).toHaveProperty('unitSource', 'temperature')
+  })
+
+  it('recognizes ambiguous inches when they match the discovered unit', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '12',
+      previewUnit: 'in'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} in'
     value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))

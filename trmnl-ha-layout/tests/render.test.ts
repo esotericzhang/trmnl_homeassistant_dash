@@ -349,6 +349,21 @@ describe('renderer', () => {
     expect(svg).not.toContain('stale')
   })
 
+  it('does not duplicate an explicit live unit in persisted templates', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} °C', unitSource: 'temperature' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
+    })
+
+    expect(svg).toContain('>21.5 °C</text>')
+    expect(svg).not.toContain('21.5 °C °C')
+  })
+
   it('clips runtime metric content to the configured item bounds', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
@@ -494,7 +509,7 @@ describe('renderer', () => {
     expect(html).toContain("api('/api/schedules')")
     expect(html).toContain("api('/api/schedules',{method:'POST'")
     expect(html).toContain("+'/duplicate',{method:'POST'}")
-    expect(html).toContain("body:JSON.stringify({schedule:scheduleBody,config})")
+    expect(html).toContain("body:JSON.stringify({schedule:scheduleBody,config:submittedConfig})")
     expect(html).toContain("+'/push',{method:'POST'}")
     expect(html).toContain("{method:'PATCH'")
     expect(html).toContain("{method:'DELETE'}")
