@@ -70,6 +70,29 @@ describe('editor focus continuity', () => {
     expectCanvasState(document, 'rendering')
   })
 
+  it('coalesces drag overlay rendering without rebuilding inspector or tabs', async () => {
+    const frames: FrameRequestCallback[] = []
+    const dom = await editorDom()
+    Object.defineProperty(dom.window, 'requestAnimationFrame', { value: (callback: FrameRequestCallback) => { frames.push(callback); return frames.length } })
+    const document = dom.window.document
+    const item = document.querySelector<HTMLElement>('.item[data-id="title"]')!
+
+    dispatchPointer(dom, item, 'pointerdown', 10, 10)
+    const currentForm = document.querySelector<HTMLFormElement>('#form')!
+    const currentTabs = document.querySelector<HTMLElement>('#schedule-tabs')!
+    dispatchPointer(dom, document.querySelector<HTMLElement>('#stage')!, 'pointermove', 20, 25)
+    dispatchPointer(dom, document.querySelector<HTMLElement>('#stage')!, 'pointermove', 30, 35)
+
+    expect(frames).toHaveLength(1)
+    expect(document.querySelector('#form')).toBe(currentForm)
+    expect(document.querySelector('#schedule-tabs')).toBe(currentTabs)
+    frames.shift()?.(0)
+    expect(document.querySelector<HTMLElement>('.item[data-id="title"]')?.style.left).toBe('30px')
+    expect(document.querySelector<HTMLElement>('.item[data-id="title"]')?.style.top).toBe('35px')
+    expect(document.querySelector('#form')).toBe(currentForm)
+    expect(document.querySelector('#schedule-tabs')).toBe(currentTabs)
+  })
+
   it('hides persisted canvas content immediately when its field is deleted', async () => {
     const dom = await editorDom()
     const document = dom.window.document
@@ -873,6 +896,33 @@ describe('editor focus continuity', () => {
     expect(metric).not.toHaveProperty('previewUnit')
     expect(metric).not.toHaveProperty('previewSource')
     expect(metric).not.toHaveProperty('unitSource')
+    expect(metric).not.toHaveProperty('explicitUnitOccurrences')
+  })
+
+  it('clears explicit unit metadata when its bound source is removed', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      explicitUnitOccurrences: [0],
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C',
+      value: '{{ temperature }} °C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ humidity }}'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    const metric = body.config.items.find(item => item.id === 'temperature')
+    expect(metric).not.toHaveProperty('unitSource')
+    expect(metric).not.toHaveProperty('explicitUnitOccurrences')
   })
 
   it('preserves metric bindings while value edits still reference their source', async () => {
@@ -1148,6 +1198,34 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('A')
     expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
     expectCanvasState(document, 'ready')
+  })
+
+  it.each(['second', 'default'])('aborts a pending switch when deleting %s', async (deletedId) => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSecond: ((response: Response) => void) | undefined
+    const pendingSecond = new Promise<Response>(resolve => { resolveSecond = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/second/config') return pendingSecond
+      if (path === '/api/schedules/' + deletedId && options?.method === 'DELETE') return new Response(null, { status: 204 })
+      return originalImplementation!(input, options)
+    })
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(true))
+    document.querySelector<HTMLButtonElement>('#manage-schedules')?.click()
+    document.querySelector<HTMLButtonElement>('[data-delete="' + deletedId + '"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab[data-id="' + deletedId + '"]')).toBeNull())
+    resolveSecond?.(new Response(JSON.stringify(layout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const expectedActive = deletedId === 'default' ? 'second' : 'default'
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe(expectedActive))
+    expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('A')
+    expectCanvasState(document, deletedId === 'default' ? 'rendering' : 'ready')
   })
 
   it.each([
@@ -1700,7 +1778,7 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
       Object.defineProperty(window, 'prompt', { value: () => null })
       Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', { value: () => undefined })
       Object.defineProperty(window.HTMLElement.prototype, 'setPointerCapture', { value: () => undefined })
-      Object.defineProperty(window, 'requestAnimationFrame', { value: (cb: (frame?: number) => void) => { cb(); return 1 } })
+      Object.defineProperty(window, 'requestAnimationFrame', { configurable: true, value: (cb: (frame?: number) => void) => { cb(); return 1 } })
     }
   })
 
