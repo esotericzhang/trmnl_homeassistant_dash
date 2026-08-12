@@ -1245,6 +1245,59 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/duplicate' && options?.method === 'POST')).toBe(true))
   })
 
+  it('cancels duplication when a queued prerequisite fails', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolvePatch: ((response: Response) => void) | undefined
+    const pendingPatch = new Promise<Response>(resolve => { resolvePatch = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PATCH') return pendingPatch
+      return originalImplementation!(input, options)
+    })
+    vi.spyOn(dom.window, 'prompt').mockReturnValue('Failed rename')
+
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="rename"]')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="duplicate"]')?.click()
+    resolvePatch?.(new Response('rename failed', { status: 500 }))
+
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Duplicate canceled'))
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/duplicate' && options?.method === 'POST')).toBe(false)
+  })
+
+  it.each([
+    ['create', '#add-schedule', '/api/schedules'],
+    ['duplicate', '#schedule-popover [data-action="duplicate"]', '/api/schedules/default/duplicate']
+  ])('does not activate a late %s response after newer navigation', async (_operation, selector, mutationPath) => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveCreated: ((response: Response) => void) | undefined
+    const pendingCreated = new Promise<Response>(resolve => { resolveCreated = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === mutationPath && options?.method === 'POST') return pendingCreated
+      return originalImplementation!(input, options)
+    })
+    vi.spyOn(dom.window, 'prompt').mockReturnValue('Created')
+
+    if (selector.includes('schedule-popover')) document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>(selector)?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === mutationPath && options?.method === 'POST')).toBe(true))
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    resolveCreated?.(new Response(JSON.stringify({ id: 'created', name: 'Created', enabled: false, order: 2, timing: { kind: 'manual' }, destination: {}, status: {} }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab[data-id="created"]')).not.toBeNull())
+
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second')
+    expect(fetcher.mock.calls.some(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/created/config')).toBe(false)
+  })
+
   it('removes unused entity mappings with hyphenated source keys', async () => {
     const hyphenatedLayout = structuredClone(layout)
     hyphenatedLayout.data = { entities: { ...hyphenatedLayout.data?.entities, 'temperature-2': 'sensor.temperature_2' } }
@@ -1300,6 +1353,28 @@ describe('editor focus continuity', () => {
     value.value = '{{ temperature }} indoors'
     value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     value.value = '{{ temperature }} °F'
+    value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.items.find(item => item.id === 'temperature')).not.toHaveProperty('unitSource')
+  })
+
+  it('clears live unit insertion for uncommon explicit units', async () => {
+    const snapshotLayout = structuredClone(layout)
+    Object.assign(snapshotLayout.items[2], {
+      unitSource: 'temperature',
+      previewSource: 'temperature',
+      previewState: '21.5',
+      previewUnit: '°C'
+    })
+    const dom = await editorDom(null, undefined, undefined, '', [], snapshotLayout)
+    const document = dom.window.document
+    document.querySelector<HTMLElement>('.item[data-id="temperature"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    const value = document.querySelector<HTMLTextAreaElement>('textarea[name="value"]')!
+    value.value = '{{ temperature }} µg/m³'
     value.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     document.querySelector<HTMLButtonElement>('#save')?.click()
     await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))

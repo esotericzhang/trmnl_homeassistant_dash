@@ -393,6 +393,50 @@ describe('renderer', () => {
     expect(svg).not.toContain('°F °C')
   })
 
+  it.each(['mmHg', 'inHg', 'VA', 'MWh', 'µg/m³', 'W/m²'])('recognizes uncommon explicit unit %s', (explicitUnit) => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { pressure: 'sensor.pressure' } },
+      items: [{ id: 'pressure', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Pressure', value: `{{ pressure }} ${explicitUnit}`, unitSource: 'pressure' }]
+    }
+    const svg = renderSvg(config, {
+      values: { pressure: '760' },
+      states: { pressure: { entity_id: 'sensor.pressure', state: '760', attributes: { unit_of_measurement: 'hPa' } } }
+    })
+
+    expect(svg).toContain(`>760 ${explicitUnit}</text>`)
+    expect(svg).not.toContain(`hPa ${explicitUnit}`)
+  })
+
+  it('keeps automatic units beside ordinary prose', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} in room', unitSource: 'temperature' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
+    })
+
+    expect(svg).toContain('>21.5 °C in room</text>')
+  })
+
+  it('renders large repeated unit templates without quadratic scanning', () => {
+    const repeated = Array.from({ length: 5000 }, () => '{{ temperature }} indoors').join(' / ')
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: repeated, unitSource: 'temperature' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } } }
+    })
+
+    expect(svg.match(/21\.5 °C indoors/g)).toHaveLength(5000)
+  })
+
   it('clips runtime metric content to the configured item bounds', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
@@ -545,7 +589,7 @@ describe('renderer', () => {
     expect(html).toContain('id="schedule-webhook"')
     expect(html).toContain("'/schedules/'+encodeURIComponent(id)+'/screen.svg")
     expect(html).toContain("api('/api/schedules/'+encodeURIComponent(id)+'/preview'")
-    expect(html).toContain("if(d.dirty&&!await saveActive())return;await settleSaveQueue(id)")
+    expect(html).toContain("if(d.dirty&&!await saveActive())return;if(!await settleSaveQueue(id))")
     expect(html).toContain("activeId!==id||loadGeneration!==activationGeneration||draft(id)!==d||d.dirty")
     expect(html).toContain('Object.assign(d.loadedSchedule,persisted)')
   })
