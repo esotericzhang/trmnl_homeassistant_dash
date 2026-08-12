@@ -1041,6 +1041,78 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLButtonElement>('#save')?.classList.contains('dirty')).toBe(true)
   })
 
+  it('serializes quick schedule patches after an in-flight full save', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSave: ((response: Response) => void) | undefined
+    const pendingSave = new Promise<Response>(resolve => { resolveSave = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PUT') return pendingSave
+      if (path === '/api/schedules/default' && options?.method === 'PATCH') {
+        return new Response(JSON.stringify({ name: 'Quick rename' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalImplementation!(input, options)
+    })
+    vi.spyOn(dom.window, 'prompt').mockReturnValue('Quick rename')
+
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="rename"]')?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(true))
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PATCH')).toBe(false)
+
+    const saveCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    resolveSave?.(new Response(String(saveCall?.[1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PATCH')).toBe(true))
+    expect(document.querySelector<HTMLInputElement>('#schedule-name')?.value).toBe('Quick rename')
+  })
+
+  it('preserves unrelated dirty inspector fields across quick patches', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const name = document.querySelector<HTMLInputElement>('#schedule-name')!
+    name.value = 'Unsaved inspector name'
+    name.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="toggle"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLInputElement>('#schedule-enabled')?.checked).toBe(false))
+
+    expect(document.querySelector<HTMLInputElement>('#schedule-name')?.value).toBe('Unsaved inspector name')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.classList.contains('dirty')).toBe(true)
+  })
+
+  it('keeps an uncached schedule switch non-interactive until load commits', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolveSecond: ((response: Response) => void) | undefined
+    const pendingSecond = new Promise<Response>(resolve => { resolveSecond = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      if (new URL(String(input), 'http://editor.local').pathname === '/api/schedules/second/config') return pendingSecond
+      return originalImplementation!(input, options)
+    })
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/second/config')).toBe(true))
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(true)
+    expect(document.querySelector<HTMLFormElement>('#form')?.hidden).toBe(true)
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.disabled).toBe(true)
+    expectCanvasState(document, 'rendering')
+
+    const secondLayout = structuredClone(layout)
+    secondLayout.items[0].text = 'Second loaded'
+    resolveSecond?.(new Response(JSON.stringify(secondLayout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Second loaded')
+    expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
+  })
+
   it('clears live unit insertion when the template includes the explicit unit', async () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], {

@@ -364,6 +364,21 @@ describe('renderer', () => {
     expect(svg).not.toContain('21.5 °C °C')
   })
 
+  it('does not append a changed live unit beside a persisted explicit unit', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Temperature', value: '{{ temperature }} °C', unitSource: 'temperature' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°F' } } }
+    })
+
+    expect(svg).toContain('>21.5 °C</text>')
+    expect(svg).not.toContain('°F °C')
+  })
+
   it('clips runtime metric content to the configured item bounds', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
@@ -517,7 +532,7 @@ describe('renderer', () => {
     expect(html).toContain("'/schedules/'+encodeURIComponent(id)+'/screen.svg")
     expect(html).toContain("api('/api/schedules/'+encodeURIComponent(id)+'/preview'")
     expect(html).toContain("if(draft()?.dirty&&!await saveActive())return")
-    expect(html).toContain('d.loadedSchedule=clone(target)')
+    expect(html).toContain('Object.assign(d.loadedSchedule,persisted)')
   })
 
   it('includes blank schedules and manual, interval, and daily timing controls', () => {
