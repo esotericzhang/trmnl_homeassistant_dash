@@ -545,7 +545,7 @@ describe('renderer', () => {
     expect(html).toContain('id="schedule-webhook"')
     expect(html).toContain("'/schedules/'+encodeURIComponent(id)+'/screen.svg")
     expect(html).toContain("api('/api/schedules/'+encodeURIComponent(id)+'/preview'")
-    expect(html).toContain("if(d.dirty&&!await saveActive())return")
+    expect(html).toContain("if(d.dirty&&!await saveActive())return;await settleSaveQueue(id)")
     expect(html).toContain("activeId!==id||loadGeneration!==activationGeneration||draft(id)!==d||d.dirty")
     expect(html).toContain('Object.assign(d.loadedSchedule,persisted)')
   })

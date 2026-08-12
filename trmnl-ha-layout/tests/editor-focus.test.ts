@@ -1193,6 +1193,76 @@ describe('editor focus continuity', () => {
     expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname.endsWith('/push') && options?.method === 'POST')).toBe(false)
   })
 
+  it('waits for queued quick patches before pushing', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolvePatch: ((response: Response) => void) | undefined
+    const pendingPatch = new Promise<Response>(resolve => { resolvePatch = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PATCH') return pendingPatch
+      if (path === '/api/schedules/default/push' && options?.method === 'POST') return new Response(JSON.stringify({ status: { result: 'success' } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return originalImplementation!(input, options)
+    })
+    vi.spyOn(dom.window, 'prompt').mockReturnValue('Queued rename')
+
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="rename"]')?.click()
+    document.querySelector<HTMLButtonElement>('#push-now')?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PATCH')).toBe(true))
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/push' && options?.method === 'POST')).toBe(false)
+
+    resolvePatch?.(new Response(JSON.stringify({ name: 'Queued rename' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/push' && options?.method === 'POST')).toBe(true))
+  })
+
+  it('waits for queued mutations before duplicating', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let resolvePatch: ((response: Response) => void) | undefined
+    const pendingPatch = new Promise<Response>(resolve => { resolvePatch = resolve })
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/default' && options?.method === 'PATCH') return pendingPatch
+      if (path === '/api/schedules/default/duplicate' && options?.method === 'POST') return new Response(JSON.stringify({ id: 'created', name: 'Created', enabled: false, order: 1, timing: { kind: 'manual' }, destination: {}, status: {} }), { status: 201, headers: { 'Content-Type': 'application/json' } })
+      if (path === '/api/schedules/created/config') return new Response(JSON.stringify(layout), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return originalImplementation!(input, options)
+    })
+    vi.spyOn(dom.window, 'prompt').mockReturnValue('Queued rename')
+
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="rename"]')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-menu')?.click()
+    document.querySelector<HTMLButtonElement>('#schedule-popover [data-action="duplicate"]')?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PATCH')).toBe(true))
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/duplicate' && options?.method === 'POST')).toBe(false)
+
+    resolvePatch?.(new Response(JSON.stringify({ name: 'Queued rename' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/duplicate' && options?.method === 'POST')).toBe(true))
+  })
+
+  it('removes unused entity mappings with hyphenated source keys', async () => {
+    const hyphenatedLayout = structuredClone(layout)
+    hyphenatedLayout.data = { entities: { ...hyphenatedLayout.data?.entities, 'temperature-2': 'sensor.temperature_2' } }
+    hyphenatedLayout.items.push({ ...hyphenatedLayout.items[2], id: 'temperature-2', value: '{{ temperature-2 }}' })
+    const dom = await editorDom(null, undefined, undefined, '', [], hyphenatedLayout)
+    const document = dom.window.document
+
+    document.querySelector<HTMLElement>('.item[data-id="temperature-2"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Saved only'))
+
+    const saveCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { config: LayoutConfig }
+    expect(body.config.data?.entities).not.toHaveProperty('temperature-2')
+    expect(body.config.data?.entities).toHaveProperty('temperature')
+  })
+
   it('clears live unit insertion when the template includes the explicit unit', async () => {
     const snapshotLayout = structuredClone(layout)
     Object.assign(snapshotLayout.items[2], {
