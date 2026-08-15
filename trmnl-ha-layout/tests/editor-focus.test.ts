@@ -364,7 +364,9 @@ describe('editor focus continuity', () => {
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default'))
 
     const staleLayout = structuredClone(layout)
-    staleLayout.items[0].text = 'Stale second schedule'
+    const staleTitle = staleLayout.items.find(item => item.id === 'title')
+    if (staleTitle?.type !== 'text') throw new Error('expected text item')
+    staleTitle.text = 'Stale second schedule'
     resolveSecond?.(new Response(JSON.stringify(staleLayout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     await new Promise(resolve => setTimeout(resolve, 0))
 

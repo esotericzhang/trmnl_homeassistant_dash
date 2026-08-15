@@ -188,6 +188,39 @@ describe('renderer', () => {
     expect(svg).not.toContain('°F')
   })
 
+  it('suppresses automatic live units when the template already has an explicit literal unit', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature' } },
+      items: [{ id: 'temperature', type: 'metric', x: 0, y: 0, width: 180, height: 62, label: 'Temperature', value: '{{ temperature }} °C', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5' },
+      states: { temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°F' } } }
+    })
+
+    expect(svg).toContain('>21.5 °C</text>')
+    expect(svg).not.toContain('°F')
+    expect(svg).not.toContain('21.5 °C °C')
+  })
+
+  it('still appends the automatic live unit when an explicit unit decorates a different placeholder', () => {
+    const config: LayoutConfig = {
+      frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { temperature: 'sensor.temperature', updated: 'sensor.updated' } },
+      items: [{ id: 'mixed', type: 'metric', x: 0, y: 0, width: 240, height: 62, label: 'Mixed', value: '{{ temperature }} at {{ updated }} °F', unitSource: 'temperature', previewSource: 'temperature', previewState: '21.5', previewUnit: '°C' }]
+    }
+    const svg = renderSvg(config, {
+      values: { temperature: '21.5', updated: '2026-06-24T08:30:00Z' },
+      states: {
+        temperature: { entity_id: 'sensor.temperature', state: '21.5', attributes: { unit_of_measurement: '°C' } },
+        updated: { entity_id: 'sensor.updated', state: '2026-06-24T08:30:00Z', attributes: {} }
+      }
+    })
+
+    expect(svg).toContain('21.5 °C at 2026-06-24T08:30:00Z °F')
+  })
+
   it('keeps editor preview metadata out of runtime rendering', () => {
     const config: LayoutConfig = {
       frame: { width: 800, height: 480, background: '#fff', foreground: '#111', fontFamily: 'Arial' },

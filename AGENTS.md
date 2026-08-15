@@ -46,6 +46,12 @@ Each schedule owns `manual`, `interval`, or `daily` timing, enabled state, text-
 
 `createScheduleCoordinator()` reloads metadata every poll, runs due schedules serially, prevents overlapping polls, and persists status through a callback. Daily scheduling uses `Intl` timezone calculations. Device registry selectors, proactive shared token refresh, and direct known-screen PATCH remain follow-up optimizations; do not copy registry objects or auth tokens into schedule records.
 
+## Metric rendering and preview snapshots
+
+`previewSource`/`previewState`/`previewUnit` on a metric are editor-only snapshots: `editorPreviewRenderData()` feeds them to the canvas/`/preview` render, while runtime SVG/PNG/push (`HomeAssistantClient.collect`) never sees them and always resolves metric values from live Home Assistant data. `GET` layout routes that carry preview snapshots require settings auth.
+
+Live/fallback unit insertion at runtime requires `unitSource` to match the placeholder, an available value, a raw-or-unset filter, AND no explicit literal unit decoration next to that placeholder (`hasExplicitUnitDecoration` in `src/render.ts`). The editor mirrors this as `templateHasExplicitUnit` and deletes `unitSource` when an explicit unit is typed, so editor canvas preview and exported output stay in parity; keep the two guards aligned when changing the unit token list.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
