@@ -556,6 +556,26 @@ describe('editor focus continuity', () => {
     expectCanvasState(document, 'ready')
   })
 
+  it('keeps items selectable while a failed preview hides the canvas', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, false, [
+      new Response('preview unavailable', { status: 503 })
+    ])
+    const document = dom.window.document
+    document.querySelector<HTMLButtonElement>('#delete-field')?.click()
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Draft preview failed'))
+
+    expectCanvasState(document, 'error')
+    const canvasState = document.querySelector<HTMLElement>('#canvas-state')!
+    const card = document.querySelector<HTMLElement>('#canvas-state .canvas-state-card')!
+    const retry = document.querySelector<HTMLButtonElement>('#retry-preview')!
+    expect(dom.window.getComputedStyle(canvasState).pointerEvents).toBe('none')
+    expect(dom.window.getComputedStyle(card).pointerEvents).toBe('auto')
+    expect(dom.window.getComputedStyle(retry).pointerEvents).toBe('auto')
+
+    document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('{{ temperature }}')
+  })
+
   it('keeps retry reachable when the last item deletion preview fails', async () => {
     const singleItemLayout: LayoutConfig = { ...layout, items: [layout.items[0]] }
     const dom = await editorDom(null, undefined, undefined, '', [], singleItemLayout, false, [

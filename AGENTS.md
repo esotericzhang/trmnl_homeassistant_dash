@@ -52,6 +52,8 @@ Each schedule owns `manual`, `interval`, or `daily` timing, enabled state, text-
 
 Live/fallback unit insertion at runtime requires `unitSource` to match the placeholder, an available value, a raw-or-unset filter, AND no explicit literal unit decoration next to that placeholder (`hasExplicitUnitDecoration` in `src/render.ts`). The editor mirrors this as `templateHasExplicitUnit` and deletes `unitSource` when an explicit unit is typed, so editor canvas preview and exported output stay in parity; keep the two guards aligned when changing the unit token list.
 
+Editor canvas masking: `#canvas-state` (z-index 3) must stay `pointer-events:none` with a transparent background, and only `.canvas-state-card` may be `pointer-events:auto`. Otherwise the full-bleed error/rendering panel blocks every item click on `#overlay` (z-index 2), which is the "clicking does nothing" failure mode when a draft preview fails and the canvas is stuck hidden. jsdom has no hit-testing, so regressions assert the computed `pointer-events` values; verify real clicks with `document.elementFromPoint` in a live browser.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
