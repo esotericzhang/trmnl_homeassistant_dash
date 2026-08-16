@@ -1225,7 +1225,9 @@ describe('editor focus continuity', () => {
     expectCanvasState(document, 'rendering')
 
     const secondLayout = structuredClone(layout)
-    secondLayout.items[0].text = 'Second loaded'
+    const secondTitle = secondLayout.items[0]
+    if (secondTitle?.type !== 'text') throw new Error('expected text title')
+    secondTitle.text = 'Second loaded'
     resolveSecond?.(new Response(JSON.stringify(secondLayout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
     expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Second loaded')
@@ -1306,7 +1308,9 @@ describe('editor focus continuity', () => {
     expectCanvasState(document, 'rendering')
 
     const createdLayout = structuredClone(layout)
-    createdLayout.items[0].text = 'Created loaded'
+    const createdTitle = createdLayout.items[0]
+    if (createdTitle?.type !== 'text') throw new Error('expected text title')
+    createdTitle.text = 'Created loaded'
     resolveCreated?.(new Response(JSON.stringify(createdLayout), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('created'))
     expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('Created loaded')
@@ -1449,7 +1453,9 @@ describe('editor focus continuity', () => {
   it('removes unused entity mappings with hyphenated source keys', async () => {
     const hyphenatedLayout = structuredClone(layout)
     hyphenatedLayout.data = { entities: { ...hyphenatedLayout.data?.entities, 'temperature-2': 'sensor.temperature_2' } }
-    hyphenatedLayout.items.push({ ...hyphenatedLayout.items[2], id: 'temperature-2', value: '{{ temperature-2 }}' })
+    const sourceMetric = hyphenatedLayout.items[2]
+    if (sourceMetric?.type !== 'metric') throw new Error('expected source metric')
+    hyphenatedLayout.items.push({ ...sourceMetric, id: 'temperature-2', value: '{{ temperature-2 }}' })
     const dom = await editorDom(null, undefined, undefined, '', [], hyphenatedLayout)
     const document = dom.window.document
 
