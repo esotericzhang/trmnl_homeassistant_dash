@@ -374,6 +374,35 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.value).toBe('A')
   })
 
+  it('rolls back a failed schedule switch so clicking the tab can retry', async () => {
+    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const originalImplementation = fetcher.getMockImplementation()
+    let secondConfigAttempts = 0
+    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
+      const path = new URL(String(input), 'http://editor.local').pathname
+      if (path === '/api/schedules/second/config' && secondConfigAttempts++ === 0) {
+        return new Response('temporary config failure', { status: 503 })
+      }
+      return originalImplementation!(input, options)
+    })
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    expect(document.querySelector('.schedule-tab[data-id="second"]')?.classList.contains('loading')).toBe(true)
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default')
+    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Schedule load failed'))
+
+    expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('default')
+    expect(document.querySelector('#schedule-title')?.textContent).toBe('Default')
+
+    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
+    expect(document.querySelector('#schedule-title')?.textContent).toBe('Second')
+    expect(document.querySelector('#status')?.textContent).toBe('Loaded "Second".')
+    expect(secondConfigAttempts).toBe(2)
+  })
+
   it('restores the committed draft image after rapid switch failure', async () => {
     const dom = await editorDom(null, undefined, undefined, '', [], layout, true, [], false)
     const document = dom.window.document
@@ -569,7 +598,7 @@ describe('editor focus continuity', () => {
     const card = document.querySelector<HTMLElement>('#canvas-state .canvas-state-card')!
     const retry = document.querySelector<HTMLButtonElement>('#retry-preview')!
     expect(dom.window.getComputedStyle(canvasState).pointerEvents).toBe('none')
-    expect(dom.window.getComputedStyle(card).pointerEvents).toBe('auto')
+    expect(dom.window.getComputedStyle(card).pointerEvents).toBe('none')
     expect(dom.window.getComputedStyle(retry).pointerEvents).toBe('auto')
 
     document.querySelector<HTMLElement>('.item[data-id="sensor-text"]')?.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))

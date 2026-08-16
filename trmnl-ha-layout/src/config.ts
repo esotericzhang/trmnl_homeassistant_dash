@@ -25,8 +25,29 @@ export function loadLayoutConfig(layoutPath = resolveLayoutPath()): LayoutConfig
   ensureLayoutFile(layoutPath)
   const raw = fs.readFileSync(layoutPath, 'utf8')
   const parsed = yaml.load(raw) as LayoutConfig
+  restoreLegacyPreviewSources(parsed)
   validateLayoutConfig(parsed)
   return parsed
+}
+
+function restoreLegacyPreviewSources(config: LayoutConfig): void {
+  if (!Array.isArray(config?.items) || !config?.data?.entities) return
+  for (const item of config.items) {
+    if (item?.type !== 'metric' || 'previewSource' in item || (!('previewState' in item) && !('previewUnit' in item))) continue
+    const referencedSources = Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*[\w-]+)?\s*}}/g), match => match[1])
+    const uniqueSources = [...new Set(referencedSources)]
+    const source = item.unitSource && referencedSources.includes(item.unitSource)
+      ? item.unitSource
+      : uniqueSources.length === 1
+        ? uniqueSources[0]
+        : undefined
+    if (source && Object.prototype.hasOwnProperty.call(config.data.entities, source)) {
+      item.previewSource = source
+    } else {
+      delete item.previewState
+      delete item.previewUnit
+    }
+  }
 }
 
 export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayoutPath()): LayoutConfig {

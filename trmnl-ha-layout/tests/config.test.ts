@@ -55,6 +55,42 @@ describe('layout config', () => {
     expect(() => validateLayoutConfig(textSnapshot)).toThrow('may only use previewUnit when type is metric')
   })
 
+  it('restores preview sources for legacy picker snapshots when loading', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'trmnl-layout-'))
+    const layoutPath = path.join(directory, 'layout.yaml')
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.id === 'asleep')
+    if (!metric || metric.type !== 'metric') throw new Error('asleep metric missing')
+    metric.previewState = '135'
+    metric.previewUnit = 'min'
+    fs.writeFileSync(layoutPath, JSON.stringify(config), 'utf8')
+
+    const loaded = loadLayoutConfig(layoutPath)
+    expect(loaded.items.find(item => item.id === 'asleep')).toMatchObject({
+      previewSource: 'minutesAsleep',
+      previewState: '135',
+      previewUnit: 'min'
+    })
+    expect(fs.readFileSync(layoutPath, 'utf8')).not.toContain('previewSource')
+  })
+
+  it('discards an ambiguous legacy picker snapshot instead of guessing its source', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'trmnl-layout-'))
+    const layoutPath = path.join(directory, 'layout.yaml')
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.id === 'asleep')
+    if (!metric || metric.type !== 'metric') throw new Error('asleep metric missing')
+    metric.value = '{{ minutesAsleep }} / {{ minutesAwake }}'
+    metric.previewState = 'private stale value'
+    metric.previewUnit = 'min'
+    fs.writeFileSync(layoutPath, JSON.stringify(config), 'utf8')
+
+    const loadedMetric = loadLayoutConfig(layoutPath).items.find(item => item.id === 'asleep')
+    expect(loadedMetric).not.toHaveProperty('previewSource')
+    expect(loadedMetric).not.toHaveProperty('previewState')
+    expect(loadedMetric).not.toHaveProperty('previewUnit')
+  })
+
   it('rejects unknown metric value formats while preserving layouts without one', () => {
     const config = loadLayoutConfig('data/default-layout.yaml')
     expect(() => validateLayoutConfig(config)).not.toThrow()

@@ -46,13 +46,17 @@ Each schedule owns `manual`, `interval`, or `daily` timing, enabled state, text-
 
 `createScheduleCoordinator()` reloads metadata every poll, runs due schedules serially, prevents overlapping polls, and persists status through a callback. Daily scheduling uses `Intl` timezone calculations. Device registry selectors, proactive shared token refresh, and direct known-screen PATCH remain follow-up optimizations; do not copy registry objects or auth tokens into schedule records.
 
+Editor schedule switches mark the clicked tab as loading while its config loads, then make it active only after the load succeeds. They must restore the previous `activeId` if loading fails; leaving the failed target active internally while the old schedule remains rendered makes later clicks on the target return early and appear completely unresponsive.
+
 ## Metric rendering and preview snapshots
 
 `previewSource`/`previewState`/`previewUnit` on a metric are editor-only snapshots: `editorPreviewRenderData()` feeds them to the canvas/`/preview` render, while runtime SVG/PNG/push (`HomeAssistantClient.collect`) never sees them and always resolves metric values from live Home Assistant data. `GET` layout routes that carry preview snapshots require settings auth.
 
 Live/fallback unit insertion at runtime requires `unitSource` to match the placeholder, an available value, a raw-or-unset filter, AND no explicit literal unit decoration next to that placeholder (`hasExplicitUnitDecoration` in `src/render.ts`). The editor mirrors this as `templateHasExplicitUnit` and deletes `unitSource` when an explicit unit is typed, so editor canvas preview and exported output stay in parity; keep the two guards aligned when changing the unit token list.
 
-Editor canvas masking: `#canvas-state` (z-index 3) must stay `pointer-events:none` with a transparent background, and only `.canvas-state-card` may be `pointer-events:auto`. Otherwise the full-bleed error/rendering panel blocks every item click on `#overlay` (z-index 2), which is the "clicking does nothing" failure mode when a draft preview fails and the canvas is stuck hidden. jsdom has no hit-testing, so regressions assert the computed `pointer-events` values; verify real clicks with `document.elementFromPoint` in a live browser.
+`loadLayoutConfig()` repairs picker snapshots saved before `previewSource` existed by binding them to the metric's sole configured template source (preferring a valid `unitSource`). Ambiguous orphaned snapshots are discarded because preview metadata is editor-only; direct writes remain strictly validated.
+
+Editor canvas masking: `#canvas-state` (z-index 3) and `.canvas-state-card` must stay `pointer-events:none` with a transparent full-bleed background; only `#retry-preview` may be `pointer-events:auto`. Otherwise the error/rendering UI blocks item clicks on `#overlay` (z-index 2), which is the "clicking does nothing" failure mode when a draft preview fails and the canvas is stuck hidden. jsdom has no hit-testing, so regressions assert the computed `pointer-events` values; verify real clicks with `document.elementFromPoint` in a live browser.
 
 ## Maintaining this file
 
