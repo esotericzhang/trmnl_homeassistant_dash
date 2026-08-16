@@ -5,6 +5,9 @@ import type { LayoutConfig, LayoutItem } from './types.js'
 
 const projectDefault = path.resolve(process.cwd(), 'data/default-layout.yaml')
 const addonDefault = '/data/layout.yaml'
+const DEFAULT_HOME_ASSISTANT_STATES_MAX_BYTES = 16 * 1024 * 1024
+
+export class LayoutValidationError extends Error {}
 
 export function resolveLayoutPath(): string {
   if (process.env.LAYOUT_PATH) return process.env.LAYOUT_PATH
@@ -22,8 +25,29 @@ export function loadLayoutConfig(layoutPath = resolveLayoutPath()): LayoutConfig
   ensureLayoutFile(layoutPath)
   const raw = fs.readFileSync(layoutPath, 'utf8')
   const parsed = yaml.load(raw) as LayoutConfig
+  restoreLegacyPreviewSources(parsed)
   validateLayoutConfig(parsed)
   return parsed
+}
+
+function restoreLegacyPreviewSources(config: LayoutConfig): void {
+  if (!Array.isArray(config?.items) || !config?.data?.entities) return
+  for (const item of config.items) {
+    if (item?.type !== 'metric' || 'previewSource' in item || (!('previewState' in item) && !('previewUnit' in item))) continue
+    const referencedSources = Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*[\w-]+)?\s*}}/g), match => match[1])
+    const uniqueSources = [...new Set(referencedSources)]
+    const source = item.unitSource && referencedSources.includes(item.unitSource)
+      ? item.unitSource
+      : uniqueSources.length === 1
+        ? uniqueSources[0]
+        : undefined
+    if (source && Object.prototype.hasOwnProperty.call(config.data.entities, source)) {
+      item.previewSource = source
+    } else {
+      delete item.previewState
+      delete item.previewUnit
+    }
+  }
 }
 
 export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayoutPath()): LayoutConfig {
@@ -41,24 +65,92 @@ export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayou
 }
 
 export function validateLayoutConfig(config: LayoutConfig): void {
-  if (!config?.frame || !config?.data?.entities || !Array.isArray(config.items)) {
-    throw new Error('Layout must include frame, data.entities, and items')
-  }
-  for (const key of ['width', 'height'] as const) {
-    if (!Number.isFinite(config.frame[key]) || config.frame[key] <= 0) {
-      throw new Error(`frame.${key} must be a positive number`)
+  try {
+    if (!config?.frame || !config?.data?.entities || !Array.isArray(config.items)) {
+      throw new Error('Layout must include frame, data.entities, and items')
     }
+    for (const key of ['width', 'height'] as const) {
+      if (!Number.isFinite(config.frame[key]) || config.frame[key] <= 0) {
+        throw new Error(`frame.${key} must be a positive number`)
+      }
+    }
+    const itemIds = new Set<string>()
+    config.items.forEach(item => {
+      if (typeof item.id !== 'string' || !item.id.trim()) throw new Error('item id must be a non-empty string')
+      if (itemIds.has(item.id)) throw new Error(`duplicate item id: ${item.id}`)
+      itemIds.add(item.id)
+      validateItem(item, config.data.entities)
+    })
+  } catch (error) {
+    if (error instanceof LayoutValidationError) throw error
+    throw new LayoutValidationError(error instanceof Error ? error.message : String(error))
   }
-  config.items.forEach(validateItem)
 }
 
-function validateItem(item: LayoutItem): void {
+function validateItem(item: LayoutItem, entities: Record<string, string>): void {
   for (const key of ['x', 'y', 'width', 'height'] as const) {
     if (!Number.isFinite(item[key])) throw new Error(`item ${item.id} has invalid ${key}`)
   }
   if (!['text', 'metric', 'forecast', 'line'].includes(item.type)) {
     throw new Error(`item ${item.id} has unsupported type ${item.type}`)
   }
+  if ((item.type === 'text' || item.type === 'metric') && (item.width <= 0 || item.height <= 0)) {
+    throw new Error(`item ${item.id} width and height must be positive`)
+  }
+  const candidate = item as LayoutItem & Record<string, unknown>
+  if ('valueFormat' in candidate) {
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use valueFormat when type is metric`)
+    if (typeof candidate.valueFormat !== 'string' || !['raw', 'duration-minutes'].includes(candidate.valueFormat)) {
+      throw new Error(`item ${item.id} has invalid valueFormat`)
+    }
+  }
+  if ('unitSource' in candidate) {
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use unitSource when type is metric`)
+    if (typeof candidate.unitSource !== 'string' || !candidate.unitSource) throw new Error(`item ${item.id} has invalid unitSource`)
+    validateMetricSource(item, entities, 'unitSource', candidate.unitSource)
+  }
+  if ('explicitUnitOccurrences' in candidate) {
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use explicitUnitOccurrences when type is metric`)
+    if (!Array.isArray(candidate.explicitUnitOccurrences)
+      || candidate.explicitUnitOccurrences.some(value => !Number.isInteger(value) || value < 0)
+      || new Set(candidate.explicitUnitOccurrences).size !== candidate.explicitUnitOccurrences.length) {
+      throw new Error(`item ${item.id} has invalid explicitUnitOccurrences`)
+    }
+    if (!item.unitSource) throw new Error(`item ${item.id} explicitUnitOccurrences requires unitSource`)
+    const placeholders = Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*([\w-]+))?\s*}}/g))
+    if (candidate.explicitUnitOccurrences.some(index => placeholders[index]?.[1] !== item.unitSource
+      || (placeholders[index]?.[2] && placeholders[index]?.[2] !== 'raw'))) {
+      throw new Error(`item ${item.id} explicitUnitOccurrences must reference raw unitSource placeholders`)
+    }
+  }
+  for (const key of ['previewSource', 'previewState', 'previewUnit'] as const) {
+    if (!(key in candidate)) continue
+    if (item.type !== 'metric') throw new Error(`item ${item.id} may only use ${key} when type is metric`)
+    if (typeof candidate[key] !== 'string') throw new Error(`item ${item.id} has invalid ${key}`)
+  }
+  if (item.type === 'metric' && ('previewState' in candidate || 'previewUnit' in candidate) && !candidate.previewSource) {
+    throw new Error(`item ${item.id} preview snapshot requires previewSource`)
+  }
+  if (item.type === 'metric' && typeof candidate.previewSource === 'string') {
+    validateMetricSource(item, entities, 'previewSource', candidate.previewSource)
+  }
+  if (item.type === 'metric' && typeof candidate.previewSource === 'string' && typeof candidate.unitSource === 'string'
+    && candidate.previewSource !== candidate.unitSource) {
+    throw new Error(`item ${item.id} previewSource and unitSource must match`)
+  }
+}
+
+function validateMetricSource(
+  item: Extract<LayoutItem, { type: 'metric' }>,
+  entities: Record<string, string>,
+  field: 'unitSource' | 'previewSource',
+  source: string
+): void {
+  if (!Object.prototype.hasOwnProperty.call(entities, source)) {
+    throw new Error(`item ${item.id} ${field} is not configured in data.entities`)
+  }
+  const referenced = Array.from(item.value.matchAll(/{{\s*([\w.-]+)(?:\s*\|\s*[\w-]+)?\s*}}/g), match => match[1]).includes(source)
+  if (!referenced) throw new Error(`item ${item.id} ${field} is not referenced by value`)
 }
 
 export function getRuntimeConfig() {
@@ -68,6 +160,10 @@ export function getRuntimeConfig() {
     port: Number(process.env.PORT ?? 10000),
     homeAssistantUrl: envString('HOME_ASSISTANT_URL') ?? stringOption(options, 'home_assistant_url') ?? settings.homeAssistantUrl ?? 'http://homeassistant:8123',
     accessToken: envString('ACCESS_TOKEN') ?? envString('HA_TOKEN') ?? stringOption(options, 'access_token') ?? settings.haToken ?? '',
+    homeAssistantStatesMaxBytes: positiveInteger(
+      process.env.HOME_ASSISTANT_STATES_MAX_BYTES ?? numberOption(options, 'home_assistant_states_max_bytes') ?? DEFAULT_HOME_ASSISTANT_STATES_MAX_BYTES,
+      'HOME_ASSISTANT_STATES_MAX_BYTES'
+    ),
     publicBaseUrl: resolveAddonBaseUrl(options, settings.publicBaseUrl),
     refreshIntervalSeconds: Number(process.env.REFRESH_INTERVAL_SECONDS ?? numberOption(options, 'refresh_interval_seconds') ?? settings.refreshIntervalSeconds ?? 0)
   }
@@ -100,6 +196,12 @@ export function stringOption(options: Record<string, unknown>, key: string): str
 export function numberOption(options: Record<string, unknown>, key: string): number | undefined {
   const value = options[key]
   return typeof value === 'number' ? value : undefined
+}
+
+function positiveInteger(value: string | number, name: string): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${name} must be a positive integer`)
+  return parsed
 }
 
 export const TERMINUS_MODES = ['screen-content', 'byos-uri', 'byos-base64', 'raw-webhook'] as const

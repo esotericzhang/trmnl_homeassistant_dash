@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadLayoutConfig, saveLayoutConfig } from '../src/config.js'
+import { loadLayoutConfig, saveLayoutConfig, validateLayoutConfig } from '../src/config.js'
+import type { LayoutConfig } from '../src/types.js'
 
 describe('layout config', () => {
   it('loads default layout with positioned items', () => {
@@ -28,5 +29,188 @@ describe('layout config', () => {
 
     expect(fs.readFileSync(layoutPath, 'utf8')).toContain('Edited title')
     expect(savedTitle).toMatchObject({ id: 'title', type: 'text', x: 42, text: 'Edited title' })
+  })
+
+  it('accepts string preview snapshots only on metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find((item) => item.type === 'metric')
+    if (!metric || metric.type !== 'metric') throw new Error('metric item missing')
+    metric.previewSource = 'minutesAsleep'
+    metric.previewState = '21.5'
+    metric.previewUnit = '°C'
+
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+
+    const numericSnapshot = structuredClone(config) as unknown as LayoutConfig
+    Object.assign(numericSnapshot.items.find((item) => item.id === metric.id)!, { previewState: 21.5 })
+    expect(() => validateLayoutConfig(numericSnapshot)).toThrow('invalid previewState')
+
+    const unboundSnapshot = structuredClone(config) as unknown as LayoutConfig
+    delete (unboundSnapshot.items.find((item) => item.id === metric.id) as { previewSource?: string }).previewSource
+    expect(() => validateLayoutConfig(unboundSnapshot)).toThrow('preview snapshot requires previewSource')
+
+    const textSnapshot = structuredClone(config) as unknown as LayoutConfig
+    const text = textSnapshot.items.find((item) => item.type === 'text')!
+    Object.assign(text, { previewUnit: 'private' })
+    expect(() => validateLayoutConfig(textSnapshot)).toThrow('may only use previewUnit when type is metric')
+  })
+
+  it('restores preview sources for legacy picker snapshots when loading', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'trmnl-layout-'))
+    const layoutPath = path.join(directory, 'layout.yaml')
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.id === 'asleep')
+    if (!metric || metric.type !== 'metric') throw new Error('asleep metric missing')
+    metric.previewState = '135'
+    metric.previewUnit = 'min'
+    fs.writeFileSync(layoutPath, JSON.stringify(config), 'utf8')
+
+    const loaded = loadLayoutConfig(layoutPath)
+    expect(loaded.items.find(item => item.id === 'asleep')).toMatchObject({
+      previewSource: 'minutesAsleep',
+      previewState: '135',
+      previewUnit: 'min'
+    })
+    expect(fs.readFileSync(layoutPath, 'utf8')).not.toContain('previewSource')
+  })
+
+  it('discards an ambiguous legacy picker snapshot instead of guessing its source', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'trmnl-layout-'))
+    const layoutPath = path.join(directory, 'layout.yaml')
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.id === 'asleep')
+    if (!metric || metric.type !== 'metric') throw new Error('asleep metric missing')
+    metric.value = '{{ minutesAsleep }} / {{ minutesAwake }}'
+    metric.previewState = 'private stale value'
+    metric.previewUnit = 'min'
+    fs.writeFileSync(layoutPath, JSON.stringify(config), 'utf8')
+
+    const loadedMetric = loadLayoutConfig(layoutPath).items.find(item => item.id === 'asleep')
+    expect(loadedMetric).not.toHaveProperty('previewSource')
+    expect(loadedMetric).not.toHaveProperty('previewState')
+    expect(loadedMetric).not.toHaveProperty('previewUnit')
+  })
+
+  it('rejects unknown metric value formats while preserving layouts without one', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+    const metric = config.items.find(item => item.type === 'metric')
+    if (!metric || metric.type !== 'metric') throw new Error('expected metric')
+    Object.assign(metric, { valueFormat: 'surprising' })
+    expect(() => validateLayoutConfig(config)).toThrow('invalid valueFormat')
+
+    for (const valueFormat of [['raw'], 1, null]) {
+      Object.assign(metric, { valueFormat })
+      expect(() => validateLayoutConfig(config)).toThrow('invalid valueFormat')
+    }
+  })
+
+  it('rejects value formats on non-metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const text = config.items.find(item => item.type === 'text')!
+    Object.assign(text, { valueFormat: 'raw' })
+    expect(() => validateLayoutConfig(config)).toThrow('may only use valueFormat when type is metric')
+  })
+
+  it('requires positive dimensions for clipped text and metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const text = config.items.find(item => item.type === 'text')!
+    text.width = 0
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${text.id} width and height must be positive`)
+
+    text.width = 1
+    const metric = config.items.find(item => item.type === 'metric')!
+    metric.height = -1
+    expect(() => validateLayoutConfig(config)).toThrow(`item ${metric.id} width and height must be positive`)
+
+    metric.height = 1
+    const line = config.items.find(item => item.type === 'line')!
+    line.width = 0
+    line.height = -10
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+  })
+
+  it('requires non-empty unique item IDs', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const duplicate = structuredClone(config)
+    duplicate.items[1].id = duplicate.items[0].id
+    expect(() => validateLayoutConfig(duplicate)).toThrow(`duplicate item id: ${duplicate.items[0].id}`)
+
+    const empty = structuredClone(config) as unknown as LayoutConfig
+    Object.assign(empty.items[0], { id: '   ' })
+    expect(() => validateLayoutConfig(empty)).toThrow('item id must be a non-empty string')
+
+    const nonString = structuredClone(config) as unknown as LayoutConfig
+    Object.assign(nonString.items[0], { id: 7 })
+    expect(() => validateLayoutConfig(nonString)).toThrow('item id must be a non-empty string')
+  })
+
+  it('validates runtime unit sources only on metric items', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep }}' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+    Object.assign(metric, { unitSource: '' })
+    expect(() => validateLayoutConfig(config)).toThrow('invalid unitSource')
+    const text = config.items.find(item => item.type === 'text')!
+    Object.assign(text, { unitSource: 'temperature' })
+    expect(() => validateLayoutConfig(config)).toThrow('may only use unitSource when type is metric')
+  })
+
+  it('requires runtime unit sources to be configured and referenced by the metric value', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { unitSource: 'missing', value: '{{ missing }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('unitSource is not configured in data.entities')
+
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAwake }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('unitSource is not referenced by value')
+
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep | raw }}' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+  })
+
+  it('validates explicit unit occurrence metadata', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { unitSource: 'minutesAsleep', value: '{{ minutesAsleep }} / {{ minutesAwake }}', explicitUnitOccurrences: [0] })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+
+    Object.assign(metric, { explicitUnitOccurrences: [1] })
+    expect(() => validateLayoutConfig(config)).toThrow('must reference raw unitSource placeholders')
+
+    delete (metric as { unitSource?: string }).unitSource
+    expect(() => validateLayoutConfig(config)).toThrow('requires unitSource')
+  })
+
+  it('requires preview sources to be configured and referenced by the metric value', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, { previewSource: 'missing', previewState: '21.5', value: '{{ missing }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('previewSource is not configured in data.entities')
+
+    Object.assign(metric, { previewSource: 'minutesAsleep', value: '{{ minutesAwake }}' })
+    expect(() => validateLayoutConfig(config)).toThrow('previewSource is not referenced by value')
+
+    Object.assign(metric, { previewSource: 'minutesAsleep', value: '{{ minutesAsleep | raw }}' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+  })
+
+  it('requires preview and runtime unit sources to match when both are present', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const metric = config.items.find(item => item.type === 'metric')!
+    Object.assign(metric, {
+      value: '{{ minutesAsleep }} / {{ minutesAwake }}',
+      previewSource: 'minutesAsleep',
+      previewState: '125',
+      previewUnit: 'min',
+      unitSource: 'minutesAwake'
+    })
+    expect(() => validateLayoutConfig(config)).toThrow('previewSource and unitSource must match')
+
+    delete (metric as { unitSource?: string }).unitSource
+    expect(() => validateLayoutConfig(config)).not.toThrow()
+    Object.assign(metric, { unitSource: 'minutesAsleep' })
+    expect(() => validateLayoutConfig(config)).not.toThrow()
   })
 })

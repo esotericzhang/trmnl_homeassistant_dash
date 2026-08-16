@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto'
 import {
   getRuntimeConfig,
   getAddonOptions,
+  LayoutValidationError,
   loadLayoutConfig,
   loadSettings,
   loadSettingsMasked,
@@ -15,7 +16,7 @@ import {
   validateSettings
 } from './config.js'
 import type { Settings } from './config.js'
-import { HomeAssistantClient, sampleRenderData } from './homeAssistant.js'
+import { editorPreviewRenderData, HomeAssistantClient, HomeAssistantRequestError, HomeAssistantResponseError, sampleRenderData } from './homeAssistant.js'
 import { renderEditorHtml, renderHtml, renderPng, renderSvg } from './render.js'
 import { createScheduleCoordinator } from './scheduler.js'
 import { legacyScheduleTerminusOverrides, TerminusClient, terminusOptionsFromEnv } from './terminus.js'
@@ -34,6 +35,7 @@ import {
   updateSchedule
 } from './schedules.js'
 import type { Schedule, UpdateScheduleInput } from './schedules.js'
+import type { HassEntitySummary, HassState } from './types.js'
 
 const runtime = getRuntimeConfig()
 const app = express()
@@ -173,6 +175,22 @@ function handleScheduleError(error: unknown, res: express.Response, next: expres
   next(error)
 }
 
+function handleLayoutWriteError(error: unknown, res: express.Response, next: express.NextFunction): void {
+  if (error instanceof LayoutValidationError) {
+    res.status(400).json({ status: 'error', message: 'Invalid layout configuration.' })
+    return
+  }
+  handleScheduleError(error, res, next)
+}
+
+function handlePublicRenderError(error: unknown, res: express.Response): void {
+  if (scheduleNotFound(error)) {
+    res.status(404).json({ status: 'error', message: (error as Error).message })
+    return
+  }
+  res.status(500).json({ status: 'error', message: 'Unable to render layout.' })
+}
+
 function scheduleForApi(schedule: Schedule): Schedule {
   return {
     ...schedule,
@@ -181,6 +199,28 @@ function scheduleForApi(schedule: Schedule): Schedule {
       webhookUrl: schedule.destination.webhookUrl ? '••••' : null
     }
   }
+}
+
+function hasPreviewSnapshots(layout: ReturnType<typeof loadLayoutConfig>): boolean {
+  return layout.items.some(item => 'previewSource' in item || 'previewState' in item || 'previewUnit' in item)
+}
+
+function sendLayoutConfig(req: express.Request, res: express.Response, layout: ReturnType<typeof loadLayoutConfig>): void {
+  if (hasPreviewSnapshots(layout) && !requireMutationAuth(req, res)) return
+  if (hasPreviewSnapshots(layout)) res.set('Cache-Control', 'no-store')
+  res.json(layout)
+}
+
+function handleLayoutConfigReadError(req: express.Request, res: express.Response, error: unknown, next: express.NextFunction): void {
+  if (scheduleNotFound(error)) {
+    handleScheduleError(error, res, next)
+    return
+  }
+  if (!isMutationAuthenticated(req)) {
+    requireMutationAuth(req, res)
+    return
+  }
+  next(error)
 }
 
 app.get('/api/schedules', (_req, res, next) => {
@@ -222,12 +262,32 @@ app.post('/api/schedules/:id/duplicate', (req, res, next) => {
 })
 
 app.get('/api/schedules/:id/config', (req, res, next) => {
-  try { res.json(loadScheduleLayout(req.params.id)) } catch (error) { handleScheduleError(error, res, next) }
+  try { sendLayoutConfig(req, res, loadScheduleLayout(req.params.id)) } catch (error) { handleLayoutConfigReadError(req, res, error, next) }
+})
+
+app.post('/api/schedules/:id/preview', (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
+  try {
+    getSchedule(req.params.id)
+  } catch (error) {
+    handleScheduleError(error, res, next)
+    return
+  }
+  try {
+    validateLayoutConfig(req.body)
+    res.type('svg').send(renderSvg(req.body, editorPreviewRenderData(req.body)))
+  } catch (error) {
+    if (error instanceof LayoutValidationError) {
+      res.status(400).json({ status: 'error', message: 'Invalid layout preview request.' })
+      return
+    }
+    res.status(500).json({ status: 'error', message: 'Unable to render layout preview.' })
+  }
 })
 
 app.put('/api/schedules/:id/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
-  try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleScheduleError(error, res, next) }
+  try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleLayoutWriteError(error, res, next) }
 })
 
 app.put('/api/schedules/:id', (req, res, next) => {
@@ -246,7 +306,7 @@ app.put('/api/schedules/:id', (req, res, next) => {
       updateSchedule(req.params.id, current)
       throw error
     }
-  } catch (error) { handleScheduleError(error, res, next) }
+  } catch (error) { handleLayoutWriteError(error, res, next) }
 })
 
 app.post('/api/schedules/:id/push', async (req, res, next) => {
@@ -261,13 +321,13 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', lastRefresh, lastPush })
 })
 
-app.get('/api/config', (_req, res, next) => {
-  try { res.json(loadScheduleLayout(defaultScheduleId())) } catch (error) { next(error) }
+app.get('/api/config', (req, res, next) => {
+  try { sendLayoutConfig(req, res, loadScheduleLayout(defaultScheduleId())) } catch (error) { handleLayoutConfigReadError(req, res, error, next) }
 })
 
 app.put('/api/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
-  try { res.json(saveScheduleLayout(defaultScheduleId(), req.body)) } catch (error) { next(error) }
+  try { res.json(saveScheduleLayout(defaultScheduleId(), req.body)) } catch (error) { handleLayoutWriteError(error, res, next) }
 })
 
 app.post('/api/refresh', async (req, res, next) => {
@@ -278,6 +338,77 @@ app.post('/api/refresh', async (req, res, next) => {
 app.get('/api/settings', (_req, res, next) => {
   try { res.json(loadSettingsMasked()) } catch (error) { next(error) }
 })
+
+app.get('/api/home-assistant/entities', async (req, res) => {
+  const disconnected = new AbortController()
+  const timeout = AbortSignal.timeout(10_000)
+  const abortDisconnected = () => {
+    if (!res.writableEnded) disconnected.abort()
+  }
+  req.once('aborted', abortDisconnected)
+  res.once('close', abortDisconnected)
+  try {
+    if (!requireMutationAuth(req, res)) return
+    const config = await currentRuntime()
+    if (!config.accessToken) {
+      res.status(400).json({ status: 'error', message: 'Home Assistant credentials are not configured. Add a long-lived token in Global connection.' })
+      return
+    }
+    const states = await new HomeAssistantClient(config.homeAssistantUrl, config.accessToken)
+      .getStates(AbortSignal.any([timeout, disconnected.signal]), config.homeAssistantStatesMaxBytes)
+    const entities = states
+      .filter(validHassState)
+      .map(entitySummary)
+      .sort((left, right) => left.domain.localeCompare(right.domain)
+        || (left.friendlyName ?? left.entityId).localeCompare(right.friendlyName ?? right.entityId)
+        || left.entityId.localeCompare(right.entityId))
+    res.set('Cache-Control', 'no-store')
+    res.json({ entities })
+  } catch (error) {
+    if (disconnected.signal.aborted) return
+    if (error instanceof HomeAssistantRequestError) {
+      const authFailure = error.status === 401 || error.status === 403
+      res.status(authFailure ? error.status : 502).json({
+        status: 'error',
+        message: authFailure
+          ? `Home Assistant rejected the configured credentials (${error.status}).`
+          : `Home Assistant entity discovery failed (${error.status}).`
+      })
+      return
+    }
+    if (error instanceof HomeAssistantResponseError) {
+      res.status(502).json({ status: 'error', message: 'Home Assistant returned an invalid entity response.' })
+      return
+    }
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      res.status(504).json({ status: 'error', message: 'Home Assistant entity discovery timed out.' })
+      return
+    }
+    res.status(502).json({ status: 'error', message: 'Could not connect to the configured Home Assistant instance.' })
+  } finally {
+    req.removeListener('aborted', abortDisconnected)
+    res.removeListener('close', abortDisconnected)
+  }
+})
+
+function validHassState(value: unknown): value is HassState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as Partial<HassState>
+  return typeof state.entity_id === 'string' && state.entity_id.includes('.')
+    && typeof state.state === 'string' && !!state.attributes && typeof state.attributes === 'object'
+}
+
+function entitySummary(state: HassState): HassEntitySummary {
+  const friendlyName = typeof state.attributes.friendly_name === 'string' ? state.attributes.friendly_name : undefined
+  const unitOfMeasurement = typeof state.attributes.unit_of_measurement === 'string' ? state.attributes.unit_of_measurement : undefined
+  return {
+    entityId: state.entity_id,
+    ...(friendlyName ? { friendlyName } : {}),
+    domain: state.entity_id.split('.', 1)[0],
+    state: state.state,
+    ...(unitOfMeasurement ? { unitOfMeasurement } : {})
+  }
+}
 
 app.put('/api/settings', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
@@ -389,40 +520,46 @@ app.delete('/api/terminus/tokens', (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-app.get('/screen.svg', async (req, res, next) => {
+app.get('/screen.svg', async (req, res) => {
   try {
     const { svg } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('image/svg+xml').send(svg)
-  } catch (error) { next(error) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/screen.png', async (req, res, next) => {
+app.get('/screen.png', async (req, res) => {
   try {
     const { png } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('image/png').send(png)
-  } catch (error) { next(error) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/render', async (req, res, next) => {
+app.get('/render', async (req, res) => {
   try {
     const { layout, svg } = await renderSchedule(defaultScheduleId(), req.query.sample === '1')
     res.type('html').send(renderHtml(layout, svg))
-  } catch (error) { next(error) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/schedules/:id/screen.svg', async (req, res, next) => {
-  try { res.type('image/svg+xml').send((await renderSchedule(req.params.id, req.query.sample === '1')).svg) } catch (error) { handleScheduleError(error, res, next) }
+app.get('/schedules/:id/screen.svg', async (req, res) => {
+  try {
+    const { svg } = await renderSchedule(req.params.id, req.query.sample === '1')
+    res.type('image/svg+xml').send(svg)
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/schedules/:id/screen.png', async (req, res, next) => {
-  try { res.type('image/png').send((await renderSchedule(req.params.id, req.query.sample === '1')).png) } catch (error) { handleScheduleError(error, res, next) }
+app.get('/schedules/:id/screen.png', async (req, res) => {
+  try {
+    const { png } = await renderSchedule(req.params.id, req.query.sample === '1')
+    res.type('image/png').send(png)
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
-app.get('/schedules/:id/render', async (req, res, next) => {
+app.get('/schedules/:id/render', async (req, res) => {
   try {
     const { layout, svg } = await renderSchedule(req.params.id, req.query.sample === '1')
     res.type('html').send(renderHtml(layout, svg))
-  } catch (error) { handleScheduleError(error, res, next) }
+  } catch (error) { handlePublicRenderError(error, res) }
 })
 
 app.get('/', (_req, res) => {
@@ -431,6 +568,7 @@ app.get('/', (_req, res) => {
 
 app.get('/editor', (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token : ''
+  res.set('Cache-Control', 'no-store')
   res.type('html').send(renderEditorHtml(token))
 })
 

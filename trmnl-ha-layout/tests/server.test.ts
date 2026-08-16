@@ -1,8 +1,10 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { Server } from 'node:http'
+import fs from 'node:fs'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { request, type Server } from 'node:http'
 import type { Settings } from '../src/config.js'
-import { loadSettings, saveSettings } from '../src/config.js'
+import { loadSettings, resolveSettingsPath, saveSettings } from '../src/config.js'
 import { app, terminusOptionsForSchedule } from '../src/server.js'
+import { loadScheduleLayout, loadSchedulesIndex, resolveScheduleLayoutPath, saveScheduleLayout } from '../src/schedules.js'
 import type { Schedule } from '../src/schedules.js'
 
 describe('server routes', () => {
@@ -50,6 +52,7 @@ describe('server routes', () => {
 
     const editor = await fetch(`${baseUrl}/editor`)
     const editorHtml = await editor.text()
+    expect(editor.headers.get('cache-control')).toBe('no-store')
     expect(editorHtml).toContain('TRMNL Layout Editor')
     expect(editorHtml).toContain('id="preview-frame"')
     expect(editorHtml).toContain('src="/screen.svg?sample=1"')
@@ -116,6 +119,127 @@ describe('server routes', () => {
   it('returns 404 for unknown schedule routes', async () => {
     const response = await fetch(`${baseUrl}/api/schedules/missing/config`)
     expect(response.status).toBe(404)
+  })
+
+  it('renders an unsaved schedule preview without persisting it', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const saved = loadScheduleLayout(list.defaultScheduleId)
+    const draft = structuredClone(saved)
+    draft.items = draft.items.filter(item => item.id !== draft.items[0]?.id)
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft)
+    })
+    expect(response.headers.get('content-type')).toContain('image/svg+xml')
+    expect(loadScheduleLayout(list.defaultScheduleId).items).toHaveLength(saved.items.length)
+  })
+
+  it('renders metric snapshots into unsaved schedule previews', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const draft = structuredClone(loadScheduleLayout(list.defaultScheduleId))
+    draft.data.entities.temperature = 'sensor.temperature'
+    draft.items.push({
+      id: 'temperature-preview', type: 'metric', x: 0, y: 0, width: 180, height: 62,
+      label: 'Temperature', value: '{{ temperature }}', unitSource: 'temperature',
+      previewSource: 'temperature', previewState: '21.5', previewUnit: '°C'
+    })
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft)
+    })
+
+    expect(await response.text()).toContain('21.5 °C')
+  })
+
+  it('returns a sanitized client error for invalid draft previews', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame: { width: -1 } })
+    })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ status: 'error', message: 'Invalid layout preview request.' })
+
+    const missing = await fetch(`${baseUrl}/api/schedules/missing/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    expect(missing.status).toBe(404)
+  })
+
+  it('returns a sanitized server error for unexpected draft preview failures', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const saved = loadScheduleLayout(list.defaultScheduleId)
+    const send = app.response.send
+    const sendSpy = vi.spyOn(app.response, 'send').mockImplementationOnce(function () {
+      throw new Error('private renderer failure')
+    }).mockImplementation(send)
+
+    try {
+      const response = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(saved)
+      })
+      expect(response.status).toBe(500)
+      expect(await response.json()).toEqual({ status: 'error', message: 'Unable to render layout preview.' })
+    } finally {
+      sendSpy.mockRestore()
+    }
+  })
+
+  it('returns sanitized client errors for invalid persisted layout writes and rolls back combined updates', async () => {
+    const list = await fetch(`${baseUrl}/api/schedules`).then((response) => response.json()) as { defaultScheduleId: string }
+    const originalSchedule = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`).then((response) => response.json()) as { name: string }
+
+    for (const path of [`/api/schedules/${list.defaultScheduleId}/config`, '/api/config']) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frame: { width: -1 } })
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ status: 'error', message: 'Invalid layout configuration.' })
+    }
+
+    const combined = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedule: { name: 'Should roll back' }, config: { frame: { width: -1 } } })
+    })
+    expect(combined.status).toBe(400)
+    expect(await combined.json()).toEqual({ status: 'error', message: 'Invalid layout configuration.' })
+    const currentSchedule = await fetch(`${baseUrl}/api/schedules/${list.defaultScheduleId}`).then((response) => response.json()) as { name: string }
+    expect(currentSchedule.name).toBe(originalSchedule.name)
+  })
+
+  it('sanitizes malformed layouts on every public render route', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    const layoutPath = resolveScheduleLayoutPath(scheduleId)
+    const original = fs.readFileSync(layoutPath, 'utf8')
+    fs.writeFileSync(layoutPath, 'items:\n  - previewState: private malformed snapshot\n    value: [', 'utf8')
+
+    try {
+      for (const path of [
+        '/screen.svg?sample=1', '/screen.png?sample=1', '/render?sample=1',
+        `/schedules/${scheduleId}/screen.svg?sample=1`, `/schedules/${scheduleId}/screen.png?sample=1`, `/schedules/${scheduleId}/render?sample=1`
+      ]) {
+        const response = await fetch(`${baseUrl}${path}`)
+        expect(response.status).toBe(500)
+        expect(response.headers.get('content-type')).toContain('application/json')
+        expect(await response.json()).toEqual({ status: 'error', message: 'Unable to render layout.' })
+      }
+    } finally {
+      fs.writeFileSync(layoutPath, original, 'utf8')
+    }
+
+    for (const path of ['/schedules/missing/screen.svg', '/schedules/missing/screen.png', '/schedules/missing/render']) {
+      expect((await fetch(`${baseUrl}${path}`)).status).toBe(404)
+    }
   })
 
   it('masks schedule webhook URLs and rejects client-owned status updates', async () => {
@@ -206,6 +330,221 @@ describe('settings + terminus auth routes', () => {
     expect(settings.terminus.refreshToken).toBe('••••5678')
     expect(settings.terminus.login).toBeUndefined()
     expect(settings.terminus.password).toBeUndefined()
+  })
+
+  it('discovers sanitized Home Assistant entities with the configured bearer token', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    let upstreamAuth = ''
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        upstreamAuth = String((init?.headers as Record<string, string>).Authorization)
+        return new Response(JSON.stringify([
+          { entity_id: 'light.porch', state: 'on', attributes: { friendly_name: 'Porch Light', sensitive_blob: 'do-not-return' } },
+          { entity_id: 'sensor.kitchen_temperature', state: '21.5', attributes: { friendly_name: 'Kitchen Temperature', unit_of_measurement: '°C', latitude: 12 } },
+          { entity_id: 'invalid', state: 'ignored', attributes: {} }
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.ok).toBe(true)
+    expect(upstreamAuth).toBe('Bearer ha-secret')
+    const body = await res.json() as { entities: unknown[] }
+    expect(body.entities).toEqual([
+      { entityId: 'light.porch', friendlyName: 'Porch Light', domain: 'light', state: 'on' },
+      { entityId: 'sensor.kitchen_temperature', friendlyName: 'Kitchen Temperature', domain: 'sensor', state: '21.5', unitOfMeasurement: '°C' }
+    ])
+    expect(JSON.stringify(body)).not.toContain('ha-secret')
+    expect(JSON.stringify(body)).not.toContain('sensitive_blob')
+    expect(JSON.stringify(body)).not.toContain('latitude')
+  })
+
+  it('returns clear non-secret Home Assistant discovery errors', async () => {
+    let res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain('credentials are not configured')
+
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        return new Response('Bearer ha-secret upstream private body', { status: 401 })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+    res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(401)
+    const text = await res.text()
+    expect(text).toContain('rejected the configured credentials (401)')
+    expect(text).not.toContain('ha-secret')
+    expect(text).not.toContain('upstream private body')
+  })
+
+  it('returns safe errors for malformed and timed-out discovery responses', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') return new Response(JSON.stringify({ states: [] }), { status: 200 })
+      return originalFetch(url, init)
+    }) as typeof fetch
+    let res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(502)
+    expect(await res.text()).toContain('invalid entity response')
+
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        throw new DOMException('timed out', 'TimeoutError')
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+    res = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(res.status).toBe(504)
+    const text = await res.text()
+    expect(text).toContain('discovery timed out')
+    expect(text).not.toContain('ha-secret')
+  })
+
+  it('preserves discovery timeouts raised while streaming the response body', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('['))
+            controller.error(new DOMException('timed out after headers', 'TimeoutError'))
+          }
+        }), { status: 200 })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const response = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(response.status).toBe(504)
+    const text = await response.text()
+    expect(text).toContain('discovery timed out')
+    expect(text).not.toContain('ha-secret')
+    expect(text).not.toContain('timed out after headers')
+  })
+
+  it('cancels Home Assistant discovery when the browser disconnects', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    let upstreamSignal: AbortSignal | undefined
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        upstreamSignal = init?.signal ?? undefined
+        return await new Promise<Response>((_resolve, reject) => {
+          upstreamSignal?.addEventListener('abort', () => reject(upstreamSignal?.reason), { once: true })
+        })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const clientRequest = request(`${baseUrl}/api/home-assistant/entities`)
+    clientRequest.on('error', () => undefined)
+    clientRequest.end()
+    await vi.waitFor(() => expect(upstreamSignal).toBeInstanceOf(AbortSignal))
+    clientRequest.destroy()
+    await vi.waitFor(() => expect(upstreamSignal?.aborted).toBe(true))
+  })
+
+  it('returns a sanitized gateway error for oversized discovery responses', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        return new Response('[]', { status: 200, headers: { 'Content-Length': String(16 * 1024 * 1024 + 1) } })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const response = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ status: 'error', message: 'Home Assistant returned an invalid entity response.' })
+  })
+
+  it('sanitizes runtime configuration failures during entity discovery', async () => {
+    const settingsPath = resolveSettingsPath()
+    const original = fs.readFileSync(settingsPath, 'utf8')
+    fs.writeFileSync(settingsPath, '{ private malformed settings', 'utf8')
+    try {
+      const response = await fetch(`${baseUrl}/api/home-assistant/entities`)
+      expect(response.status).toBe(502)
+      const text = await response.text()
+      expect(text).toContain('Could not connect to the configured Home Assistant instance.')
+      expect(text).not.toContain('malformed settings')
+      expect(text).not.toContain('JSON')
+    } finally {
+      fs.writeFileSync(settingsPath, original, 'utf8')
+    }
+  })
+
+  it('requires settings authentication for Home Assistant discovery', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret', settingsToken: 'guard-token' })
+    const unauthorized = await fetch(`${baseUrl}/api/home-assistant/entities`)
+    expect(unauthorized.status).toBe(401)
+  })
+
+  it('requires settings authentication for config reads containing preview snapshots', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    const original = loadScheduleLayout(scheduleId)
+    const snapshot = structuredClone(original)
+    snapshot.data.entities.private = 'sensor.private'
+    snapshot.items.push({
+      id: 'private-preview', type: 'metric', x: 0, y: 0, width: 100, height: 60,
+      label: 'Private', value: '{{ private }}', previewSource: 'private', previewState: 'locked', previewUnit: 'secret'
+    })
+    saveScheduleLayout(scheduleId, snapshot)
+    saveSettings({ ...loadSettings(), settingsToken: 'guard-token' })
+
+    try {
+      for (const path of [`/api/schedules/${scheduleId}/config`, '/api/config']) {
+        const unauthorized = await fetch(`${baseUrl}${path}`)
+        expect(unauthorized.status).toBe(401)
+        expect(await unauthorized.text()).not.toContain('locked')
+
+        const authorized = await fetch(`${baseUrl}${path}`, { headers: { Authorization: 'Bearer guard-token' } })
+        expect(authorized.ok).toBe(true)
+        expect(authorized.headers.get('cache-control')).toBe('no-store')
+        expect(await authorized.text()).toContain('locked')
+      }
+    } finally {
+      saveScheduleLayout(scheduleId, original)
+    }
+  })
+
+  it('prevents caching authenticated Home Assistant discovery', async () => {
+    saveSettings({ ...loadSettings(), homeAssistantUrl: 'http://ha.local:8123', haToken: 'ha-secret', settingsToken: 'guard-token' })
+    globalThis.fetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url) === 'http://ha.local:8123/api/states') {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalFetch(url, init)
+    }) as typeof fetch
+
+    const response = await fetch(`${baseUrl}/api/home-assistant/entities`, { headers: { Authorization: 'Bearer guard-token' } })
+
+    expect(response.ok).toBe(true)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('does not expose malformed protected config content before authentication', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    const layoutPath = resolveScheduleLayoutPath(scheduleId)
+    const original = fs.readFileSync(layoutPath, 'utf8')
+    fs.writeFileSync(layoutPath, 'items:\n  - previewState: private malformed snapshot\n    value: [', 'utf8')
+    saveSettings({ ...loadSettings(), settingsToken: 'guard-token' })
+
+    try {
+      for (const path of [`/api/schedules/${scheduleId}/config`, '/api/config']) {
+        const unauthorized = await fetch(`${baseUrl}${path}`)
+        expect(unauthorized.status).toBe(401)
+        const text = await unauthorized.text()
+        expect(text).not.toContain('private malformed snapshot')
+        expect(text).not.toContain('YAML')
+      }
+    } finally {
+      fs.writeFileSync(layoutPath, original, 'utf8')
+    }
   })
 
   it('PUT /api/settings round-trips and preserves unmasked tokens', async () => {

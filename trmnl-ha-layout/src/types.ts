@@ -37,6 +37,12 @@ export interface MetricItem extends BaseItem {
   type: 'metric'
   label: string
   value: string
+  valueFormat?: 'raw' | 'duration-minutes'
+  unitSource?: string
+  explicitUnitOccurrences?: number[]
+  previewSource?: string
+  previewState?: string
+  previewUnit?: string
 }
 
 export interface ForecastItem extends BaseItem {
@@ -70,9 +76,18 @@ export interface HassState {
   last_updated?: string
 }
 
+export interface HassEntitySummary {
+  entityId: string
+  friendlyName?: string
+  domain: string
+  state: string
+  unitOfMeasurement?: string
+}
+
 export type HassStateMap = Record<string, HassState>
 
 export interface RenderData {
   values: Record<string, string | number | null | undefined>
   states: HassStateMap
+  itemSnapshots?: Record<string, { source: string; state: string; unit?: string }>
 }

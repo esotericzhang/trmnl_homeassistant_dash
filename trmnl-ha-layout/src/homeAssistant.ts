@@ -1,5 +1,7 @@
 import type { HassState, HassStateMap, LayoutConfig, RenderData } from './types.js'
 
+const DEFAULT_MAX_STATES_RESPONSE_BYTES = 16 * 1024 * 1024
+
 export class HomeAssistantClient {
   constructor(private baseUrl: string, private token: string, private fetcher: typeof fetch = fetch) {}
 
@@ -14,6 +16,27 @@ export class HomeAssistantClient {
     return response.json() as Promise<HassState>
   }
 
+  async getStates(signal?: AbortSignal, maxResponseBytes = DEFAULT_MAX_STATES_RESPONSE_BYTES): Promise<HassState[]> {
+    if (!this.token) throw new Error('Missing Home Assistant token')
+    const response = await this.fetcher(new URL('/api/states', this.baseUrl), {
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+      signal
+    })
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined)
+      throw new HomeAssistantRequestError(response.status)
+    }
+    let payload: unknown
+    try {
+      payload = JSON.parse(await readResponseText(response, maxResponseBytes))
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) throw error
+      throw new HomeAssistantResponseError()
+    }
+    if (!Array.isArray(payload)) throw new HomeAssistantResponseError()
+    return payload as HassState[]
+  }
+
   async collect(config: LayoutConfig, signal?: AbortSignal): Promise<RenderData> {
     const entries = await Promise.all(
       Object.entries(config.data.entities).map(async ([key, entity]) => [key, await this.getState(entity, signal)] as const)
@@ -21,6 +44,49 @@ export class HomeAssistantClient {
     const states: HassStateMap = Object.fromEntries(entries)
     const values = Object.fromEntries(entries.map(([key, state]) => [key, state.state]))
     return { values, states }
+  }
+}
+
+async function readResponseText(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new HomeAssistantResponseError()
+  }
+  if (!response.body) return response.text()
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let bytes = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytes += value.byteLength
+    if (bytes > maxBytes) {
+      await reader.cancel()
+      throw new HomeAssistantResponseError()
+    }
+    chunks.push(value)
+  }
+
+  const body = new Uint8Array(bytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(body)
+}
+
+export class HomeAssistantRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Home Assistant request failed: ${status}`)
+  }
+}
+
+export class HomeAssistantResponseError extends Error {
+  constructor() {
+    super('Home Assistant returned an invalid states response')
   }
 }
 
@@ -42,6 +108,20 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
     ]
   }
   return { values: Object.fromEntries(Object.entries(states).map(([key, state]) => [key, state.state])), states }
+}
+
+export function editorPreviewRenderData(config: LayoutConfig): RenderData {
+  const data = sampleRenderData(config)
+  data.itemSnapshots = {}
+  for (const item of config.items) {
+    if (item.type !== 'metric' || typeof item.previewSource !== 'string' || typeof item.previewState !== 'string') continue
+    data.itemSnapshots[item.id] = {
+      source: item.previewSource,
+      state: item.previewState,
+      ...(item.previewUnit ? { unit: item.previewUnit } : {})
+    }
+  }
+  return data
 }
 
 function sampleValue(key: string): string {
