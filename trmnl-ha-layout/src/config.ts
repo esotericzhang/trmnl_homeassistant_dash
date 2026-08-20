@@ -22,12 +22,24 @@ export function ensureLayoutFile(layoutPath = resolveLayoutPath()): void {
 }
 
 export function loadLayoutConfig(layoutPath = resolveLayoutPath()): LayoutConfig {
+  return parseLayoutYaml(loadLayoutYaml(layoutPath))
+}
+
+export function loadLayoutYaml(layoutPath = resolveLayoutPath()): string {
   ensureLayoutFile(layoutPath)
-  const raw = fs.readFileSync(layoutPath, 'utf8')
-  const parsed = yaml.load(raw) as LayoutConfig
-  restoreLegacyPreviewSources(parsed)
-  validateLayoutConfig(parsed)
-  return parsed
+  return fs.readFileSync(layoutPath, 'utf8')
+}
+
+export function parseLayoutYaml(yamlText: string): LayoutConfig {
+  try {
+    const parsed = yaml.load(yamlText) as LayoutConfig
+    restoreLegacyPreviewSources(parsed)
+    validateLayoutConfig(parsed)
+    return parsed
+  } catch (error) {
+    if (error instanceof LayoutValidationError) throw error
+    throw new LayoutValidationError(error instanceof Error ? error.message : String(error))
+  }
 }
 
 function restoreLegacyPreviewSources(config: LayoutConfig): void {
@@ -52,16 +64,25 @@ function restoreLegacyPreviewSources(config: LayoutConfig): void {
 
 export function saveLayoutConfig(config: LayoutConfig, layoutPath = resolveLayoutPath()): LayoutConfig {
   validateLayoutConfig(config)
-  fs.mkdirSync(path.dirname(layoutPath), { recursive: true })
-  const yamlText = yaml.dump(config, {
+  return saveLayoutYaml(dumpLayoutConfig(config), layoutPath)
+}
+
+export function dumpLayoutConfig(config: LayoutConfig): string {
+  validateLayoutConfig(config)
+  return yaml.dump(config, {
     lineWidth: 120,
     noRefs: true,
     sortKeys: false
   })
+}
+
+export function saveLayoutYaml(yamlText: string, layoutPath = resolveLayoutPath()): LayoutConfig {
+  const parsed = parseLayoutYaml(yamlText)
+  fs.mkdirSync(path.dirname(layoutPath), { recursive: true })
   const temporaryPath = `${layoutPath}.tmp`
   fs.writeFileSync(temporaryPath, yamlText, 'utf8')
   fs.renameSync(temporaryPath, layoutPath)
-  return loadLayoutConfig(layoutPath)
+  return parsed
 }
 
 export function validateLayoutConfig(config: LayoutConfig): void {

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { request, type Server } from 'node:http'
+import yaml from 'js-yaml'
 import type { Settings } from '../src/config.js'
 import { loadSettings, resolveSettingsPath, saveSettings } from '../src/config.js'
 import { app, terminusOptionsForSchedule } from '../src/server.js'
@@ -72,6 +73,10 @@ describe('server routes', () => {
     expect(editorHtml).toContain('id="screen-name"')
     expect(editorHtml).toContain('id="screen-label"')
     expect(editorHtml).not.toContain('id="terminus_screen_id"')
+
+    const yamlLibrary = await fetch(`${baseUrl}/vendor/js-yaml.min.js`)
+    expect(yamlLibrary.ok).toBe(true)
+    expect(yamlLibrary.headers.get('content-type')).toContain('application/javascript')
   })
 
   it('creates and edits independent schedules while legacy routes keep the default layout', async () => {
@@ -114,6 +119,38 @@ describe('server routes', () => {
     const legacySvg = await fetch(`${baseUrl}/screen.svg?sample=1&schedule_id=${created.id}`).then((response) => response.text())
     const defaultSvg = await fetch(`${baseUrl}/screen.svg?sample=1`).then((response) => response.text())
     expect(legacySvg).toBe(defaultSvg)
+  })
+
+  it('round-trips exact schedule YAML and rejects invalid YAML without persisting metadata', async () => {
+    const createdResponse = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'YAML draft test' })
+    })
+    const created = await createdResponse.json() as { id: string; name: string }
+    const config = loadScheduleLayout(created.id)
+    const yamlText = `# Preserve this console comment\n${yaml.dump(config, { noRefs: true, lineWidth: -1 })}`
+
+    try {
+      const saved = await fetch(`${baseUrl}/api/schedules/${created.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule: { name: 'Saved from YAML' }, config, yaml: yamlText })
+      })
+      expect(saved.ok).toBe(true)
+      expect(await fetch(`${baseUrl}/api/schedules/${created.id}/yaml`).then(response => response.text())).toBe(yamlText)
+
+      const invalid = await fetch(`${baseUrl}/api/schedules/${created.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule: { name: 'Must not persist' }, config, yaml: 'frame: [invalid' })
+      })
+      expect(invalid.status).toBe(400)
+      expect(await fetch(`${baseUrl}/api/schedules/${created.id}/yaml`).then(response => response.text())).toBe(yamlText)
+      expect(await fetch(`${baseUrl}/api/schedules/${created.id}`).then(response => response.json())).toMatchObject({ name: 'Saved from YAML' })
+    } finally {
+      await fetch(`${baseUrl}/api/schedules/${created.id}`, { method: 'DELETE' })
+    }
   })
 
   it('returns 404 for unknown schedule routes', async () => {
@@ -510,6 +547,19 @@ describe('settings + terminus auth routes', () => {
     } finally {
       saveScheduleLayout(scheduleId, original)
     }
+  })
+
+  it('requires settings authentication for raw schedule YAML', async () => {
+    const scheduleId = loadSchedulesIndex().defaultScheduleId
+    saveSettings({ ...loadSettings(), settingsToken: 'guard-token' })
+
+    const unauthorized = await fetch(`${baseUrl}/api/schedules/${scheduleId}/yaml`)
+    expect(unauthorized.status).toBe(401)
+
+    const authorized = await fetch(`${baseUrl}/api/schedules/${scheduleId}/yaml`, { headers: { Authorization: 'Bearer guard-token' } })
+    expect(authorized.ok).toBe(true)
+    expect(authorized.headers.get('cache-control')).toBe('no-store')
+    expect(authorized.headers.get('content-type')).toContain('text/yaml')
   })
 
   it('prevents caching authenticated Home Assistant discovery', async () => {
