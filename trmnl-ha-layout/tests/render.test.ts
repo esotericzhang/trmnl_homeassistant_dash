@@ -84,6 +84,67 @@ describe('renderer', () => {
     expect(svg).toContain('x="470" y="6" font-size="30"')
   })
 
+  it('alternates forecast column text colors only when configured', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const forecast = config.items.find((item) => item.id === 'forecast')
+    if (!forecast || forecast.type !== 'forecast') throw new Error('forecast item must be a forecast')
+    const data = sampleRenderData(config)
+    const rows = data.states.hourlyForecast.attributes.forecast as Array<Record<string, unknown>>
+    for (const row of rows) row.precipitation_probability = 15
+
+    expect(renderSvg(config, data)).not.toContain('style="fill:#666666"')
+
+    forecast.uvX = 350
+    forecast.conditionX = 470
+    forecast.alternateColumnColor = '#666666'
+    const svg = renderSvg(config, data)
+    expect(svg.match(/style="fill:#666666"/g)).toHaveLength(16)
+    expect(svg).toContain('font-weight="900" style="fill:#666666">61°</text>')
+    expect(svg).toContain('font-weight="700">15%</text>')
+    expect(svg).toContain('font-weight="900" style="fill:#666666">UV 0.4</text>')
+    expect(svg).toContain('font-weight="900">cloudy</text>')
+
+    for (const row of rows) delete row.precipitation_probability
+    const svgWithoutPrecipitation = renderSvg(config, data)
+    expect(svgWithoutPrecipitation.match(/style="fill:#666666"/g)).toHaveLength(16)
+    expect(svgWithoutPrecipitation).toContain('font-weight="900" style="fill:#666666">61°</text>')
+    expect(svgWithoutPrecipitation).toContain('font-weight="900">UV 0.4</text>')
+    expect(svgWithoutPrecipitation).toContain('font-weight="900" style="fill:#666666">cloudy</text>')
+  })
+
+  it('preserves alternate forecast column colors in raster output', async () => {
+    const config: LayoutConfig = {
+      frame: { width: 600, height: 60, background: '#fff', foreground: '#111', fontFamily: 'Arial' },
+      data: { entities: { hourlyForecast: 'sensor.weather_hourly_forecast' } },
+      items: [{
+        id: 'forecast-colors', type: 'forecast', x: 0, y: 0, width: 600, height: 50,
+        fontSize: 32, weight: 900, rowHeight: 50, maxItems: 1, source: 'hourlyForecast',
+        timeX: 0, tempX: 180, uvX: 280, conditionX: 400, conditionFontSize: 30,
+        alternateColumnColor: '#888888'
+      }]
+    }
+    const data: RenderData = {
+      values: {},
+      states: {
+        hourlyForecast: {
+          entity_id: 'sensor.weather_hourly_forecast',
+          state: 'forecast',
+          attributes: { forecast: [{ datetime: '2026-06-24T08:00:00-07:00', temperature: 61, uv_index: 4.2, condition: 'sunny' }] }
+        }
+      }
+    }
+    const png = await renderPng(config, renderSvg(config, data))
+    const darkestPixel = async (left: number, width: number): Promise<number> => {
+      const pixels = await sharp(png).greyscale().extract({ left, top: 0, width, height: 42 }).raw().toBuffer()
+      return Math.min(...pixels)
+    }
+
+    expect(await darkestPixel(0, 150)).toBeLessThan(40)
+    expect(await darkestPixel(180, 70)).toBeGreaterThanOrEqual(120)
+    expect(await darkestPixel(280, 100)).toBeLessThan(40)
+    expect(await darkestPixel(400, 150)).toBeGreaterThanOrEqual(120)
+  })
+
   it('clips forecast rows and truncates long conditions inside item bounds', () => {
     const config: LayoutConfig = {
       frame: {
@@ -703,6 +764,7 @@ describe('renderer', () => {
     const html = renderEditorHtml()
     expect(html).toContain("'precipX','uvX','conditionX'")
     expect(html).toContain("'precipWeight','uvWeight','conditionWeight'")
+    expect(html).toContain("'rowDivider','alternateColumnColor','dividerInset'")
   })
 
   it('includes blank schedules and manual, interval, and daily timing controls', () => {

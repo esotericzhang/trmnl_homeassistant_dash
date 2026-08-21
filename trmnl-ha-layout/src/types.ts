@@ -62,6 +62,7 @@ export interface ForecastItem extends BaseItem {
   uvWeight?: number | string
   conditionWeight?: number | string
   rowDivider?: boolean
+  alternateColumnColor?: string
   dividerInset?: number
   rowPaddingY?: number
 }
