@@ -50,7 +50,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
 const stage=document.getElementById('stage'),overlay=document.getElementById('overlay'),previewFrame=document.getElementById('preview-frame'),canvasState=document.getElementById('canvas-state'),canvasStateTitle=document.getElementById('canvas-state-title'),canvasStateMessage=document.getElementById('canvas-state-message'),retryPreview=document.getElementById('retry-preview'),form=document.getElementById('form'),empty=document.getElementById('empty'),itemSection=document.getElementById('item-section'),addPanel=document.getElementById('add-panel'),statusEl=document.getElementById('status'),settingsBody=document.getElementById('settings-body'),manager=document.getElementById('schedule-manager'),globalModal=document.getElementById('global-modal'),popover=document.getElementById('schedule-popover'),yamlPanel=document.getElementById('yaml-panel'),yamlEditor=document.getElementById('yaml-editor'),yamlState=document.getElementById('yaml-state');
 let schedules=[],activeId=null,config,loadedConfig,displayedConfig=null,displayedScheduleId=null,displayedSrc=previewFrame.src,canvasMode='ready',selectedId,drag,overlayRenderQueued=false,addMode=false,addType='text',selectedHaEntity=null,selectedHaInputs=null,haEntities=null,haEntitiesLoading=false,haEntitiesError='',haEntitiesGeneration=0,entityDiscoveryController=null,previewTimer=null,previewController=null,previewGeneration=0,loadGeneration=0,loadController=null,scheduleLoading=false,addedIds=new Set();const drafts=new Map(),saveQueues=new Map(),saveGenerations=new Map();
 const bootstrapToken=${inlineScriptString(bootstrapToken)},settingsToken=bootstrapToken||sessionStorage.getItem('trmnl_settings_token')||'';if(bootstrapToken){sessionStorage.setItem('trmnl_settings_token',bootstrapToken);const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('token');history.replaceState(null,'',cleanUrl.pathname+cleanUrl.search+cleanUrl.hash)}function authHeaders(extra){const h=Object.assign({},extra||{});if(settingsToken)h.Authorization='Bearer '+settingsToken;return h}
-const fields=['id','type','x','y','width','height','fontSize','weight','align','text','label','value','valueFormat','source','maxItems','rowHeight','timeX','tempX','precipX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','conditionWeight','rowDivider','dividerInset','rowPaddingY'];const numericFields=new Set(['x','y','width','height','fontSize','weight','maxItems','rowHeight','timeX','tempX','precipX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','conditionWeight','dividerInset','rowPaddingY']);
+const fields=['id','type','x','y','width','height','fontSize','weight','align','text','label','value','valueFormat','source','maxItems','rowHeight','timeX','tempX','precipX','uvX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','uvWeight','conditionWeight','rowDivider','dividerInset','rowPaddingY'];const numericFields=new Set(['x','y','width','height','fontSize','weight','maxItems','rowHeight','timeX','tempX','precipX','uvX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','uvWeight','conditionWeight','dividerInset','rowPaddingY']);
 function active(){return schedules.find(s=>s.id===activeId)}
 function draft(id=activeId){return drafts.get(id)}
 function clone(v){return JSON.parse(JSON.stringify(v))}
@@ -238,10 +238,12 @@ function renderForecast(item: ForecastItem, data: RenderData, clipId: string): s
   const maxVisibleRows = Math.max(Math.floor(item.height / rowHeight), 0)
   const rows = sourceRows.slice(0, maxVisibleRows)
   const hasPrecipitation = rows.some((row) => precipitationValue(row as Record<string, unknown>) !== '')
+  const hasUvIndex = item.uvX !== undefined && rows.some((row) => uvIndexValue(row as Record<string, unknown>) !== '')
   const timeX = item.timeX ?? 0
   const tempX = item.tempX ?? 70
   const precipX = item.precipX ?? 112
-  const conditionX = item.conditionX ?? (hasPrecipitation ? 168 : 126)
+  const uvX = item.uvX ?? 0
+  const conditionX = item.conditionX ?? (hasUvIndex ? uvX + 100 : hasPrecipitation ? 168 : 126)
   const conditionWidth = Math.max(item.width - conditionX - 2, 0)
   const conditionFontSize = item.conditionFontSize ?? Math.max(fontSize - 2, 12)
   const rowPaddingY = item.rowPaddingY ?? 3
@@ -253,6 +255,7 @@ function renderForecast(item: ForecastItem, data: RenderData, clipId: string): s
     const temp = entry.temperature ?? entry.templow ?? '—'
     const condition = String(entry.condition ?? '').replaceAll('-', ' ')
     const precipitation = precipitationValue(entry)
+    const uvIndex = uvIndexValue(entry)
     const conditionText = truncateText(condition, conditionWidth, conditionFontSize)
     const divider = item.rowDivider && index < rows.length - 1
       ? `<line x1="${dividerInset}" y1="${rowHeight - 1}" x2="${item.width - dividerInset}" y2="${rowHeight - 1}" stroke="#111" stroke-width="1" opacity="0.35" />`
@@ -261,6 +264,7 @@ function renderForecast(item: ForecastItem, data: RenderData, clipId: string): s
       <text x="${timeX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.timeWeight ?? item.weight ?? 700}">${escapeXml(time)}</text>
       <text x="${tempX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.tempWeight ?? item.weight ?? 700}">${escapeXml(String(temp))}°</text>
       ${hasPrecipitation ? `<text x="${precipX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.precipWeight ?? 700}" class="muted">${escapeXml(precipitation)}</text>` : ''}
+      ${hasUvIndex ? `<text x="${uvX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.uvWeight ?? item.weight ?? 700}" class="muted">${escapeXml(uvIndex)}</text>` : ''}
       <text x="${conditionX}" y="${rowPaddingY}" font-size="${conditionFontSize}" font-weight="${item.conditionWeight ?? item.weight ?? 800}" fill="#222">${escapeXml(conditionText)}</text>
       ${divider}
     </g>`
@@ -274,6 +278,14 @@ function precipitationValue(entry: Record<string, unknown>): string {
   if (value === undefined || value === null || value === '') return ''
   if (typeof value === 'number') return `${Math.round(value)}%`
   return String(value)
+}
+
+function uvIndexValue(entry: Record<string, unknown>): string {
+  const value = entry.uv_index ?? entry.uvIndex
+  if (value === undefined || value === null || value === '') return ''
+  const numericValue = Number(value)
+  const formatted = Number.isFinite(numericValue) ? String(Math.round(numericValue * 10) / 10) : String(value)
+  return `UV ${formatted}`
 }
 
 function truncateText(text: string, maxWidth: number, fontSize: number): string {

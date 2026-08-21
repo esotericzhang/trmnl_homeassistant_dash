@@ -53,11 +53,13 @@ export interface ForecastItem extends BaseItem {
   timeX?: number
   tempX?: number
   precipX?: number
+  uvX?: number
   conditionX?: number
   conditionFontSize?: number
   timeWeight?: number | string
   tempWeight?: number | string
   precipWeight?: number | string
+  uvWeight?: number | string
   conditionWeight?: number | string
   rowDivider?: boolean
   dividerInset?: number

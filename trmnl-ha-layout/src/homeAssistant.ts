@@ -97,14 +97,14 @@ export function sampleRenderData(config: LayoutConfig): RenderData {
   }
   if (states.hourlyForecast) {
     states.hourlyForecast.attributes.forecast = [
-      { datetime: '2026-06-24T08:00:00-07:00', temperature: 61, condition: 'cloudy' },
-      { datetime: '2026-06-24T09:00:00-07:00', temperature: 64, condition: 'partlycloudy' },
-      { datetime: '2026-06-24T10:00:00-07:00', temperature: 67, condition: 'sunny' },
-      { datetime: '2026-06-24T11:00:00-07:00', temperature: 70, condition: 'sunny' },
-      { datetime: '2026-06-24T12:00:00-07:00', temperature: 73, condition: 'sunny' },
-      { datetime: '2026-06-24T13:00:00-07:00', temperature: 75, condition: 'sunny' },
-      { datetime: '2026-06-24T14:00:00-07:00', temperature: 76, condition: 'partlycloudy' },
-      { datetime: '2026-06-24T15:00:00-07:00', temperature: 74, condition: 'cloudy' }
+      { datetime: '2026-06-24T08:00:00-07:00', temperature: 61, uv_index: 0.4, condition: 'cloudy' },
+      { datetime: '2026-06-24T09:00:00-07:00', temperature: 64, uv_index: 1.2, condition: 'partlycloudy' },
+      { datetime: '2026-06-24T10:00:00-07:00', temperature: 67, uv_index: 2.5, condition: 'sunny' },
+      { datetime: '2026-06-24T11:00:00-07:00', temperature: 70, uv_index: 4.1, condition: 'sunny' },
+      { datetime: '2026-06-24T12:00:00-07:00', temperature: 73, uv_index: 5.3, condition: 'sunny' },
+      { datetime: '2026-06-24T13:00:00-07:00', temperature: 75, uv_index: 5.8, condition: 'sunny' },
+      { datetime: '2026-06-24T14:00:00-07:00', temperature: 76, uv_index: 4.9, condition: 'partlycloudy' },
+      { datetime: '2026-06-24T15:00:00-07:00', temperature: 74, uv_index: 3.6, condition: 'cloudy' }
     ]
   }
   return { values: Object.fromEntries(Object.entries(states).map(([key, state]) => [key, state.state])), states }
