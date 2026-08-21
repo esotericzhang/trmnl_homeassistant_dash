@@ -1,5 +1,7 @@
 import express from 'express'
 import { timingSafeEqual } from 'crypto'
+import path from 'node:path'
+import { createRequire } from 'node:module'
 import {
   getRuntimeConfig,
   getAddonOptions,
@@ -10,6 +12,7 @@ import {
   loadSettingsSafe,
   maskSettings,
   normalizeSettings,
+  parseLayoutYaml,
   saveSettings,
   stringOption,
   validateLayoutConfig,
@@ -30,8 +33,10 @@ import {
   getSchedule,
   listSchedules,
   loadScheduleLayout,
+  loadScheduleLayoutYaml,
   loadSchedulesIndex,
   saveScheduleLayout,
+  saveScheduleLayoutYaml,
   updateSchedule
 } from './schedules.js'
 import type { Schedule, UpdateScheduleInput } from './schedules.js'
@@ -39,6 +44,8 @@ import type { HassEntitySummary, HassState } from './types.js'
 
 const runtime = getRuntimeConfig()
 const app = express()
+const requireFromHere = createRequire(import.meta.url)
+const jsYamlBrowserPath = path.join(path.dirname(requireFromHere.resolve('js-yaml/package.json')), 'dist/js-yaml.min.js')
 app.use(express.json({ limit: '2mb' }))
 ensureSchedules()
 
@@ -285,6 +292,14 @@ app.post('/api/schedules/:id/preview', (req, res, next) => {
   }
 })
 
+app.get('/api/schedules/:id/yaml', (req, res, next) => {
+  if (!requireMutationAuth(req, res)) return
+  try {
+    res.set('Cache-Control', 'no-store')
+    res.type('text/yaml').send(loadScheduleLayoutYaml(req.params.id))
+  } catch (error) { handleScheduleError(error, res, next) }
+})
+
 app.put('/api/schedules/:id/config', (req, res, next) => {
   if (!requireMutationAuth(req, res)) return
   try { res.json(saveScheduleLayout(req.params.id, req.body)) } catch (error) { handleLayoutWriteError(error, res, next) }
@@ -297,11 +312,15 @@ app.put('/api/schedules/:id', (req, res, next) => {
     delete changes.status
     const current = getSchedule(req.params.id)
     if (changes.destination?.webhookUrl === '••••') changes.destination.webhookUrl = current.destination.webhookUrl
-    validateLayoutConfig(req.body?.config)
+    const yamlText = typeof req.body?.yaml === 'string' ? req.body.yaml : undefined
+    if (yamlText === undefined) validateLayoutConfig(req.body?.config)
+    else parseLayoutYaml(yamlText)
     const updated = updateSchedule(req.params.id, changes)
     try {
-      const layout = saveScheduleLayout(req.params.id, req.body.config)
-      res.json({ schedule: scheduleForApi(updated), config: layout })
+      const layout = yamlText === undefined
+        ? saveScheduleLayout(req.params.id, req.body.config)
+        : saveScheduleLayoutYaml(req.params.id, yamlText)
+      res.json({ schedule: scheduleForApi(updated), config: layout, ...(yamlText === undefined ? {} : { yaml: yamlText }) })
     } catch (error) {
       updateSchedule(req.params.id, current)
       throw error
@@ -570,6 +589,12 @@ app.get('/editor', (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token : ''
   res.set('Cache-Control', 'no-store')
   res.type('html').send(renderEditorHtml(token))
+})
+
+app.get('/vendor/js-yaml.min.js', (_req, res, next) => {
+  res.type('application/javascript').sendFile(jsYamlBrowserPath, (error) => {
+    if (error) next(error)
+  })
 })
 
 app.get('/preview', (_req, res) => {

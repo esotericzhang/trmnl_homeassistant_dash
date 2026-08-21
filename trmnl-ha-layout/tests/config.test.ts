@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadLayoutConfig, saveLayoutConfig, validateLayoutConfig } from '../src/config.js'
+import { loadLayoutConfig, loadLayoutYaml, saveLayoutConfig, saveLayoutYaml, validateLayoutConfig } from '../src/config.js'
 import type { LayoutConfig } from '../src/types.js'
 
 describe('layout config', () => {
@@ -29,6 +29,18 @@ describe('layout config', () => {
 
     expect(fs.readFileSync(layoutPath, 'utf8')).toContain('Edited title')
     expect(savedTitle).toMatchObject({ id: 'title', type: 'text', x: 42, text: 'Edited title' })
+  })
+
+  it('preserves exact validated YAML and leaves the existing file intact on invalid input', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'trmnl-layout-'))
+    const layoutPath = path.join(directory, 'layout.yaml')
+    const yamlText = `# Hand-edited layout\n${fs.readFileSync('data/default-layout.yaml', 'utf8')}`
+
+    saveLayoutYaml(yamlText, layoutPath)
+    expect(loadLayoutYaml(layoutPath)).toBe(yamlText)
+
+    expect(() => saveLayoutYaml('frame: [invalid', layoutPath)).toThrow()
+    expect(loadLayoutYaml(layoutPath)).toBe(yamlText)
   })
 
   it('accepts string preview snapshots only on metric items', () => {

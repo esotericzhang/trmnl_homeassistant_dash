@@ -48,6 +48,8 @@ Each schedule owns `manual`, `interval`, or `daily` timing, enabled state, text-
 
 Editor schedule switches mark the clicked tab as loading while its config loads, then make it active only after the load succeeds. They must restore the previous `activeId` if loading fails; leaving the failed target active internally while the old schedule remains rendered makes later clicks on the target return early and appear completely unresponsive.
 
+The editor's YAML console loads exact bytes through authenticated `GET /api/schedules/:id/yaml`. Valid edits update the schedule's in-browser layout draft and use the existing authenticated `/preview` route, while invalid YAML remains editable and blocks save. Visual layout edits regenerate draft YAML. Only the combined `PUT /api/schedules/:id` persists the YAML, preserving its comments and formatting.
+
 ## Metric rendering and preview snapshots
 
 `previewSource`/`previewState`/`previewUnit` on a metric are editor-only snapshots: `editorPreviewRenderData()` feeds them to the canvas/`/preview` render, while runtime SVG/PNG/push (`HomeAssistantClient.collect`) never sees them and always resolves metric values from live Home Assistant data. `GET` layout routes that carry preview snapshots require settings auth.

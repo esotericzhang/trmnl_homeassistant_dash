@@ -3,12 +3,14 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
   loadLayoutConfig,
+  loadLayoutYaml,
   getRuntimeConfig,
   loadSettings,
   loadSettingsSafe,
   resolveLayoutPath,
   resolveSettingsPath,
-  saveLayoutConfig
+  saveLayoutConfig,
+  saveLayoutYaml
 } from './config.js'
 import type { Settings, TerminusMode } from './config.js'
 import type { LayoutConfig } from './types.js'
@@ -293,6 +295,12 @@ export function loadScheduleLayout(id: string, options: SchedulePersistenceOptio
   return loadLayoutConfig(resolveScheduleLayoutPath(id, paths.schedulesDirectory))
 }
 
+export function loadScheduleLayoutYaml(id: string, options: SchedulePersistenceOptions = {}): string {
+  const paths = resolvePaths(options)
+  getSchedule(id, options)
+  return loadLayoutYaml(resolveScheduleLayoutPath(id, paths.schedulesDirectory))
+}
+
 export function saveScheduleLayout(
   id: string,
   layout: LayoutConfig,
@@ -301,6 +309,16 @@ export function saveScheduleLayout(
   const paths = resolvePaths(options)
   getSchedule(id, options)
   return saveLayoutConfig(layout, resolveScheduleLayoutPath(id, paths.schedulesDirectory))
+}
+
+export function saveScheduleLayoutYaml(
+  id: string,
+  yamlText: string,
+  options: SchedulePersistenceOptions = {}
+): LayoutConfig {
+  const paths = resolvePaths(options)
+  getSchedule(id, options)
+  return saveLayoutYaml(yamlText, resolveScheduleLayoutPath(id, paths.schedulesDirectory))
 }
 
 export function emptyScheduleLayout(template: LayoutConfig): LayoutConfig {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
+import yaml from 'js-yaml'
 import sharp from 'sharp'
 import { editorPreviewRenderData } from '../src/homeAssistant.js'
 import { renderEditorHtml, renderSvg } from '../src/render.js'
@@ -1317,31 +1318,18 @@ describe('editor focus continuity', () => {
     expect(document.querySelector<HTMLButtonElement>('#save')?.disabled).toBe(false)
   })
 
-  it('does not push a different or newly dirty schedule after saving', async () => {
-    const dom = await editorDom(null, undefined, undefined, '', [], layout, true)
+  it('blocks pushing a dirty schedule until Save schedule is clicked', async () => {
+    const dom = await editorDom()
     const document = dom.window.document
     const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
-    const originalImplementation = fetcher.getMockImplementation()
-    let resolveSave: ((response: Response) => void) | undefined
-    const pendingSave = new Promise<Response>(resolve => { resolveSave = resolve })
-    fetcher.mockImplementation(async (input: string | URL | Request, options?: RequestInit) => {
-      const path = new URL(String(input), 'http://editor.local').pathname
-      if (path === '/api/schedules/default' && options?.method === 'PUT') return pendingSave
-      return originalImplementation!(input, options)
-    })
 
     const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
-    text.value = 'Submitted for push'
+    text.value = 'Unsaved draft'
     text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
     document.querySelector<HTMLButtonElement>('#push-now')?.click()
-    text.value = 'Newer unsaved draft'
-    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
-    document.querySelector<HTMLButtonElement>('.schedule-tab[data-id="second"]')?.click()
-    await vi.waitFor(() => expect(document.querySelector('.schedule-tab.active')?.getAttribute('data-id')).toBe('second'))
-    const saveCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
-    resolveSave?.(new Response(String(saveCall?.[1]?.body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    await vi.waitFor(() => expect(document.querySelector('#status')?.textContent).toContain('Push canceled'))
 
+    expect(document.querySelector('#status')?.textContent).toContain('Save schedule before pushing unsaved changes.')
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(false)
     expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname.endsWith('/push') && options?.method === 'POST')).toBe(false)
   })
 
@@ -1774,6 +1762,60 @@ describe('editor focus continuity', () => {
     enabled.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
     expect(webhook.value).toBe('••••')
   })
+
+  it('previews valid YAML edits without persisting them until Save schedule', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const yamlEditor = document.querySelector<HTMLTextAreaElement>('#yaml-editor')!
+    const edited = structuredClone(layout)
+    edited.items[0].x = 91
+    const editedYaml = `# Keep this hand-written comment\n${yaml.dump(edited, { noRefs: true, lineWidth: -1 })}`
+
+    yamlEditor.value = editedYaml
+    yamlEditor.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    await vi.waitFor(() => {
+      const previewCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default/preview' && options?.method === 'POST' && String(options.body).includes('"x":91'))
+      expect(previewCall).toBeDefined()
+    })
+    expect(document.querySelector<HTMLElement>('.item[data-id="title"]')?.style.left).toBe('91px')
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(false)
+
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    await vi.waitFor(() => expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(true))
+    const saveCall = fetcher.mock.calls.find(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')
+    const body = JSON.parse(String(saveCall?.[1]?.body)) as { yaml: string }
+    expect(body.yaml).toBe(editedYaml)
+  })
+
+  it('keeps invalid YAML editable and blocks Save schedule', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const yamlEditor = document.querySelector<HTMLTextAreaElement>('#yaml-editor')!
+
+    yamlEditor.value = 'frame: [invalid'
+    yamlEditor.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    expect(yamlEditor.value).toBe('frame: [invalid')
+    expect(yamlEditor.classList.contains('invalid')).toBe(true)
+
+    document.querySelector<HTMLButtonElement>('#save')?.click()
+    expect(document.querySelector('#status')?.textContent).toContain('Save blocked: fix the invalid YAML draft first.')
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(false)
+  })
+
+  it('regenerates the YAML draft after visual editor changes without saving', async () => {
+    const dom = await editorDom()
+    const document = dom.window.document
+    const fetcher = globalThis.fetch as ReturnType<typeof vi.fn>
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!
+    text.value = 'Changed visually'
+    text.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+
+    expect(document.querySelector<HTMLTextAreaElement>('#yaml-editor')?.value).toContain('text: Changed visually')
+    expect(fetcher.mock.calls.some(([input, options]) => new URL(String(input), 'http://editor.local').pathname === '/api/schedules/default' && options?.method === 'PUT')).toBe(false)
+  })
 })
 
 async function editorDom(webhookUrl: string | null = null, discovery: unknown = { entities: [] }, discoveryError?: { status: number; message: string }, bootstrapToken = '', discoveryResponses: Array<unknown | Promise<unknown>> = [], initialLayout: LayoutConfig = layout, secondSchedule = false, previewResponses: Array<string | Response> = [], autoLoadDraftImages = true, secondLayout: LayoutConfig = layout, editorUrl = 'http://editor.local/editor', storedToken = '', scheduleOrder: { defaultOrder?: number; secondOrder?: number } = {}): Promise<JSDOM> {
@@ -1789,6 +1831,8 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     ['/api/settings', { homeAssistantUrl: '', haToken: '', publicBaseUrl: '', refreshIntervalSeconds: 0, device: null, terminus: { apiUrl: '', mode: 'byos-uri' } }],
     ['/api/home-assistant/entities', discovery]
   ])
+  const initialYaml = `# Stored schedule layout\n${yaml.dump(initialLayout, { noRefs: true, lineWidth: -1 })}`
+  const secondYaml = `# Stored second schedule layout\n${yaml.dump(secondLayout, { noRefs: true, lineWidth: -1 })}`
   let discoveryAttempts = 0
   const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
     const path = new URL(String(input), 'http://editor.local').pathname
@@ -1798,6 +1842,9 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     if (path === '/api/home-assistant/entities' && discoveryResponses.length) {
       const body = await discoveryResponses.shift()
       return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (path.endsWith('/yaml')) {
+      return new Response(path === '/api/schedules/second/yaml' ? secondYaml : initialYaml, { status: 200, headers: { 'Content-Type': 'text/yaml' } })
     }
     if (path === '/api/schedules/default') {
       const body = options?.body ? JSON.parse(String(options.body)) : {}
@@ -1821,6 +1868,7 @@ async function editorDom(webhookUrl: string | null = null, discovery: unknown = 
     runScripts: 'dangerously',
     beforeParse(window) {
       if (storedToken) window.sessionStorage.setItem('trmnl_settings_token', storedToken)
+      Object.defineProperty(window, 'jsyaml', { value: yaml })
       const src = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src')
       if (src?.get && src.set) Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
         configurable: true,
