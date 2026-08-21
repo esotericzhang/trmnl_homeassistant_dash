@@ -67,6 +67,23 @@ describe('renderer', () => {
     expect(svg).toMatch(/clip-path="url\(#layout-clip-\d+\)"/)
   })
 
+  it('renders hourly UV indexes only when a UV column is configured', () => {
+    const config = loadLayoutConfig('data/default-layout.yaml')
+    const forecast = config.items.find((item) => item.id === 'forecast')
+    if (!forecast || forecast.type !== 'forecast') throw new Error('forecast item must be a forecast')
+    const data = sampleRenderData(config)
+
+    expect(renderSvg(config, data)).not.toContain('UV 0.4')
+
+    forecast.uvX = 350
+    forecast.uvWeight = 800
+    forecast.conditionX = 470
+    const svg = renderSvg(config, data)
+    expect(svg).toContain('x="350" y="6" font-size="31" font-weight="800" class="muted">UV 0.4</text>')
+    expect(svg).toContain('UV 5.8')
+    expect(svg).toContain('x="470" y="6" font-size="30"')
+  })
+
   it('clips forecast rows and truncates long conditions inside item bounds', () => {
     const config: LayoutConfig = {
       frame: {
@@ -680,6 +697,12 @@ describe('renderer', () => {
     expect(html).toContain('markDirty(true,true,false)')
     expect(html).toContain("api('/api/schedules/'+encodeURIComponent(id)+'/preview'")
     expect(html).toContain('Save blocked: fix the invalid YAML draft first.')
+  })
+
+  it('exposes UV forecast positioning and weight in the visual editor', () => {
+    const html = renderEditorHtml()
+    expect(html).toContain("'precipX','uvX','conditionX'")
+    expect(html).toContain("'precipWeight','uvWeight','conditionWeight'")
   })
 
   it('includes blank schedules and manual, interval, and daily timing controls', () => {
