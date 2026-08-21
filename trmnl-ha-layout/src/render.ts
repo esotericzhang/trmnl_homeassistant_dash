@@ -50,7 +50,7 @@ export function renderEditorHtml(bootstrapToken = ''): string {
 const stage=document.getElementById('stage'),overlay=document.getElementById('overlay'),previewFrame=document.getElementById('preview-frame'),canvasState=document.getElementById('canvas-state'),canvasStateTitle=document.getElementById('canvas-state-title'),canvasStateMessage=document.getElementById('canvas-state-message'),retryPreview=document.getElementById('retry-preview'),form=document.getElementById('form'),empty=document.getElementById('empty'),itemSection=document.getElementById('item-section'),addPanel=document.getElementById('add-panel'),statusEl=document.getElementById('status'),settingsBody=document.getElementById('settings-body'),manager=document.getElementById('schedule-manager'),globalModal=document.getElementById('global-modal'),popover=document.getElementById('schedule-popover'),yamlPanel=document.getElementById('yaml-panel'),yamlEditor=document.getElementById('yaml-editor'),yamlState=document.getElementById('yaml-state');
 let schedules=[],activeId=null,config,loadedConfig,displayedConfig=null,displayedScheduleId=null,displayedSrc=previewFrame.src,canvasMode='ready',selectedId,drag,overlayRenderQueued=false,addMode=false,addType='text',selectedHaEntity=null,selectedHaInputs=null,haEntities=null,haEntitiesLoading=false,haEntitiesError='',haEntitiesGeneration=0,entityDiscoveryController=null,previewTimer=null,previewController=null,previewGeneration=0,loadGeneration=0,loadController=null,scheduleLoading=false,addedIds=new Set();const drafts=new Map(),saveQueues=new Map(),saveGenerations=new Map();
 const bootstrapToken=${inlineScriptString(bootstrapToken)},settingsToken=bootstrapToken||sessionStorage.getItem('trmnl_settings_token')||'';if(bootstrapToken){sessionStorage.setItem('trmnl_settings_token',bootstrapToken);const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('token');history.replaceState(null,'',cleanUrl.pathname+cleanUrl.search+cleanUrl.hash)}function authHeaders(extra){const h=Object.assign({},extra||{});if(settingsToken)h.Authorization='Bearer '+settingsToken;return h}
-const fields=['id','type','x','y','width','height','fontSize','weight','align','text','label','value','valueFormat','source','maxItems','rowHeight','timeX','tempX','precipX','uvX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','uvWeight','conditionWeight','rowDivider','dividerInset','rowPaddingY'];const numericFields=new Set(['x','y','width','height','fontSize','weight','maxItems','rowHeight','timeX','tempX','precipX','uvX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','uvWeight','conditionWeight','dividerInset','rowPaddingY']);
+const fields=['id','type','x','y','width','height','fontSize','weight','align','text','label','value','valueFormat','source','maxItems','rowHeight','timeX','tempX','precipX','uvX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','uvWeight','conditionWeight','rowDivider','alternateColumnColor','dividerInset','rowPaddingY'];const numericFields=new Set(['x','y','width','height','fontSize','weight','maxItems','rowHeight','timeX','tempX','precipX','uvX','conditionX','conditionFontSize','timeWeight','tempWeight','precipWeight','uvWeight','conditionWeight','dividerInset','rowPaddingY']);
 function active(){return schedules.find(s=>s.id===activeId)}
 function draft(id=activeId){return drafts.get(id)}
 function clone(v){return JSON.parse(JSON.stringify(v))}
@@ -248,6 +248,19 @@ function renderForecast(item: ForecastItem, data: RenderData, clipId: string): s
   const conditionFontSize = item.conditionFontSize ?? Math.max(fontSize - 2, 12)
   const rowPaddingY = item.rowPaddingY ?? 3
   const dividerInset = item.dividerInset ?? 0
+  const hasAlternateColumns = Boolean(item.alternateColumnColor)
+  const alternateTextStyle = hasAlternateColumns ? ` style="fill:${escapeXml(item.alternateColumnColor!)}"` : ''
+  let visibleColumnIndex = 0
+  const nextColumnFill = (): string => {
+    const fill = visibleColumnIndex % 2 === 1 ? alternateTextStyle : ''
+    visibleColumnIndex += 1
+    return fill
+  }
+  const timeColumnFill = nextColumnFill()
+  const tempColumnFill = nextColumnFill()
+  const precipColumnFill = hasPrecipitation ? nextColumnFill() : ''
+  const uvColumnFill = hasUvIndex ? nextColumnFill() : ''
+  const conditionColumnFill = nextColumnFill()
   const rendered = rows.map((row, index) => {
     const entry = row as Record<string, unknown>
     const y = index * rowHeight
@@ -261,11 +274,11 @@ function renderForecast(item: ForecastItem, data: RenderData, clipId: string): s
       ? `<line x1="${dividerInset}" y1="${rowHeight - 1}" x2="${item.width - dividerInset}" y2="${rowHeight - 1}" stroke="#111" stroke-width="1" opacity="0.35" />`
       : ''
     return `<g transform="translate(0,${y})">
-      <text x="${timeX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.timeWeight ?? item.weight ?? 700}">${escapeXml(time)}</text>
-      <text x="${tempX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.tempWeight ?? item.weight ?? 700}">${escapeXml(String(temp))}°</text>
-      ${hasPrecipitation ? `<text x="${precipX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.precipWeight ?? 700}" class="muted">${escapeXml(precipitation)}</text>` : ''}
-      ${hasUvIndex ? `<text x="${uvX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.uvWeight ?? item.weight ?? 700}" class="muted">${escapeXml(uvIndex)}</text>` : ''}
-      <text x="${conditionX}" y="${rowPaddingY}" font-size="${conditionFontSize}" font-weight="${item.conditionWeight ?? item.weight ?? 800}" fill="#222">${escapeXml(conditionText)}</text>
+      <text x="${timeX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.timeWeight ?? item.weight ?? 700}"${timeColumnFill}>${escapeXml(time)}</text>
+      <text x="${tempX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.tempWeight ?? item.weight ?? 700}"${tempColumnFill}>${escapeXml(String(temp))}°</text>
+      ${hasPrecipitation ? `<text x="${precipX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.precipWeight ?? 700}"${hasAlternateColumns ? precipColumnFill : ' class="muted"'}>${escapeXml(precipitation)}</text>` : ''}
+      ${hasUvIndex ? `<text x="${uvX}" y="${rowPaddingY}" font-size="${fontSize}" font-weight="${item.uvWeight ?? item.weight ?? 700}"${hasAlternateColumns ? uvColumnFill : ' class="muted"'}>${escapeXml(uvIndex)}</text>` : ''}
+      <text x="${conditionX}" y="${rowPaddingY}" font-size="${conditionFontSize}" font-weight="${item.conditionWeight ?? item.weight ?? 800}"${hasAlternateColumns ? conditionColumnFill : ' fill="#222"'}>${escapeXml(conditionText)}</text>
       ${divider}
     </g>`
   }).join('\n')

@@ -60,7 +60,7 @@ Live/fallback unit insertion at runtime requires `unitSource` to match the place
 
 Editor canvas masking: `#canvas-state` (z-index 3) and `.canvas-state-card` must stay `pointer-events:none` with a transparent full-bleed background; only `#retry-preview` may be `pointer-events:auto`. Otherwise the error/rendering UI blocks item clicks on `#overlay` (z-index 2), which is the "clicking does nothing" failure mode when a draft preview fails and the canvas is stuck hidden. jsdom has no hit-testing, so regressions assert the computed `pointer-events` values; verify real clicks with `document.elementFromPoint` in a live browser.
 
-Forecast UV rendering is opt-in: setting `uvX` adds a `UV n` column from each row's `uv_index` (or `uvIndex`), while omitting it preserves legacy forecast output. `sampleRenderData()` includes representative UV values so the editor preview exercises the column without Home Assistant.
+Forecast presentation options are opt-in: setting `uvX` adds a `UV n` column from each row's `uv_index` (or `uvIndex`), and `alternateColumnColor` alternates text color across the columns that are actually visible. Omitting either preserves legacy output. `sampleRenderData()` includes representative UV values so the editor preview exercises the UV column without Home Assistant.
 
 ## Maintaining this file
 
